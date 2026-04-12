@@ -68,7 +68,8 @@ curl -X POST localhost:3456/read -H 'Content-Type: application/json' \
 | `/recon` | POST | Full page map — every element, form, selector, heading, nav link, metadata, captcha detection |
 | `/read` | POST | Structured page content — headings, tables, code blocks, notifications, result areas |
 | `/fill` | POST | Fill form fields with real CDP keystrokes (works with React, Vue, SPAs) |
-| `/click` | POST | Click by CSS selector or text match (handles `target="_blank"` automatically) |
+| `/click` | POST | Click by selector or text, including dropdown options. Optional `waitAfter` for SPAs |
+| `/dismiss` | POST | Auto-dismiss cookie banners, consent dialogs, modals (multi-language) |
 | `/scroll` | POST | Scroll page, returns visible content preview and scroll position |
 | `/navigate` | POST | Go to URL, back, or forward in the same tab |
 | `/eval` | POST | Run JavaScript in any tab or cross-origin iframe |

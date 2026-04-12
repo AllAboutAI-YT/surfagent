@@ -226,6 +226,26 @@ Get clean, structured readable content from a page. Use this instead of screensh
 
 ---
 
+### POST /dismiss
+
+Dismiss cookie banners, consent dialogs, and modal overlays. Supports 15+ language patterns (English, Norwegian, German, French, Spanish, Italian, Portuguese).
+
+```json
+{ "tab": "0" }
+```
+
+Response:
+```json
+{ "dismissed": [{ "type": "cookie", "text": "reject all" }], "count": 1 }
+```
+
+If nothing was found to dismiss:
+```json
+{ "dismissed": [], "count": 0 }
+```
+
+---
+
 ### POST /focus
 
 Bring a tab to the front in Chrome. Use this when a tab is behind other tabs or windows.
@@ -250,10 +270,17 @@ Click an element on a page.
 { "tab": "0", "selector": "#submit-btn" }
 ```
 
-**By text** (fuzzy match against visible text):
+**By text** (fuzzy match against visible text, including dropdown options):
 ```json
 { "tab": "0", "text": "Submit" }
 ```
+
+**With wait** (wait for page to settle after click — useful for SPA navigation):
+```json
+{ "tab": "0", "text": "Search", "waitAfter": 2000 }
+```
+
+Text search matches: buttons, links, `role="option"`, `role="menuitem"`, `role="listitem"`, `li[aria-label]`, and elements with `onclick`. This means autocomplete dropdown items are clickable by text without needing `/eval`.
 
 **Response:**
 ```json
