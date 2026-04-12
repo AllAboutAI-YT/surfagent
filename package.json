@@ -1,6 +1,6 @@
 {
   "name": "surfagent",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Browser automation API for AI agents — structured page recon, form filling, clicking, and navigation via Chrome CDP",
   "keywords": [
     "ai-agent",

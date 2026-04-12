@@ -179,6 +179,14 @@ const server = http.createServer(async (req, res) => {
         json(res, 500, { error: message });
     }
 });
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`[surfagent] Port ${PORT} is already in use. API may already be running.`);
+        console.error(`[surfagent] Check with: curl localhost:${PORT}/health`);
+        process.exit(1);
+    }
+    throw err;
+});
 server.listen(PORT, () => {
     console.log(`Browser Recon API running on http://localhost:${PORT}`);
     console.log(`CDP target: ${CDP_HOST}:${CDP_PORT}`);
