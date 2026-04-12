@@ -135,9 +135,9 @@ export async function clickElement(request, options) {
           }
           if (!el && text) {
             const lower = text.toLowerCase();
-            const all = document.querySelectorAll('a, button, input[type="submit"], [role="button"], [onclick]');
+            const all = document.querySelectorAll('a, button, input[type="submit"], [role="button"], [role="option"], [role="menuitem"], [role="listitem"], [role="tab"], [role="link"], li[aria-label], [onclick]');
             for (const candidate of all) {
-              const t = (candidate.innerText || candidate.textContent || candidate.value || '').trim();
+              const t = (candidate.innerText || candidate.textContent || candidate.value || candidate.getAttribute('aria-label') || '').trim();
               if (t.toLowerCase().includes(lower)) { el = candidate; break; }
             }
           }
@@ -159,6 +159,10 @@ export async function clickElement(request, options) {
       `,
             returnByValue: true
         });
+        // Wait after click if requested (for page to settle after navigation/SPA route change)
+        if (request.waitAfter && request.waitAfter > 0) {
+            await new Promise(resolve => setTimeout(resolve, Math.min(request.waitAfter, 10000)));
+        }
         await client.close();
         return result.result.value;
     }
@@ -351,6 +355,67 @@ export async function readPage(tabPattern, options) {
         }
         await client.close();
         return result;
+    }
+    catch (error) {
+        await client.close();
+        throw error;
+    }
+}
+const DISMISS_OVERLAYS_SCRIPT = `
+(function() {
+  const dismissed = [];
+
+  // Common cookie consent button patterns (multi-language)
+  const consentPatterns = [
+    'reject all', 'reject', 'decline', 'deny',
+    'accept all', 'accept', 'godta alle', 'godta',
+    'alle ablehnen', 'ablehnen', 'tout refuser', 'refuser',
+    'rechazar todo', 'rechazar', 'rifiuta tutto', 'rifiuta',
+    'bare nødvendige', 'only necessary', 'nur notwendige',
+    'manage preferences', 'cookie settings',
+  ];
+
+  // Try cookie consent buttons
+  for (const btn of document.querySelectorAll('button, a[role="button"]')) {
+    const text = (btn.innerText || btn.textContent || '').trim().toLowerCase();
+    if (text.length > 50 || text.length < 2) continue;
+    for (const pattern of consentPatterns) {
+      if (text === pattern || text.startsWith(pattern)) {
+        btn.click();
+        dismissed.push({ type: 'cookie', text: text.substring(0, 40) });
+        break;
+      }
+    }
+    if (dismissed.length) break;
+  }
+
+  // Try closing modal dialogs (X button, close button, dismiss)
+  if (!dismissed.length) {
+    for (const btn of document.querySelectorAll('[aria-label*="Close" i], [aria-label*="Dismiss" i], [aria-label*="Lukk" i], [aria-label*="Schließen" i], [aria-label*="Fermer" i]')) {
+      const dialog = btn.closest('[role="dialog"], [role="alertdialog"], .modal, [data-overlay]');
+      if (dialog) {
+        btn.click();
+        dismissed.push({ type: 'dialog', text: btn.getAttribute('aria-label') || 'close' });
+        break;
+      }
+    }
+  }
+
+  return { dismissed, count: dismissed.length };
+})()
+`;
+export async function dismissOverlays(tabPattern, options) {
+    const port = options.port || 9222;
+    const host = options.host || 'localhost';
+    const tab = await resolveTab(tabPattern, port, host);
+    const client = await connectToTab(tab.id, port, host);
+    try {
+        const r = await client.Runtime.evaluate({
+            expression: DISMISS_OVERLAYS_SCRIPT,
+            returnByValue: true
+        });
+        await client.close();
+        return r.result.value;
     }
     catch (error) {
         await client.close();

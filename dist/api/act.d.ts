@@ -23,6 +23,7 @@ export interface ClickRequest {
     tab: string;
     selector?: string;
     text?: string;
+    waitAfter?: number;
 }
 export declare function clickElement(request: ClickRequest, options: {
     port?: number;
@@ -69,6 +70,10 @@ export declare function readPage(tabPattern: string, options: {
     port?: number;
     host?: string;
     selector?: string;
+}): Promise<any>;
+export declare function dismissOverlays(tabPattern: string, options: {
+    port?: number;
+    host?: string;
 }): Promise<any>;
 export interface CaptchaRequest {
     tab: string;

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http from 'node:http';
 import { reconUrl, reconTab } from './recon.js';
-import { fillFields, clickElement, scrollPage, navigatePage, evalInTab, focusTab, readPage, captchaInteract } from './act.js';
+import { fillFields, clickElement, scrollPage, navigatePage, evalInTab, focusTab, readPage, captchaInteract, dismissOverlays } from './act.js';
 import { getAllTabs } from '../chrome/tabs.js';
 const PORT = parseInt(process.env.API_PORT || '3456', 10);
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
@@ -88,6 +88,15 @@ const server = http.createServer(async (req, res) => {
                 return json(res, 400, { error: 'Provide "tab", optional "direction" (down/up), "amount" (pixels)' });
             }
             const result = await scrollPage(body, { port: CDP_PORT, host: CDP_HOST });
+            return json(res, 200, result);
+        }
+        // POST /dismiss — dismiss cookie banners, modals, overlays
+        if (path === '/dismiss' && req.method === 'POST') {
+            const body = parseBody(await readBody(req));
+            if (!body.tab) {
+                return json(res, 400, { error: 'Provide "tab"' });
+            }
+            const result = await dismissOverlays(body.tab, { port: CDP_PORT, host: CDP_HOST });
             return json(res, 200, result);
         }
         // POST /captcha — detect and interact with captchas
