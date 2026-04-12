@@ -159,8 +159,17 @@ Agents never need to guess selectors or parse screenshots. The recon response ha
 - CodePen (cross-origin iframe interaction)
 - Polymarket (market data extraction)
 
+## Platform Support
+
+| Platform | Status |
+|---|---|
+| macOS | Fully supported |
+| Linux | Fully supported |
+| Windows | Not yet supported — coming soon |
+
 ## Requirements
 
+- macOS or Linux
 - Chrome (any recent version)
 - Node.js 18+
 
