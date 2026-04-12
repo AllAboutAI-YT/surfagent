@@ -1,36 +1,43 @@
+## IMPORTANT: Never kill Chrome
+
+`surfagent` launches a **separate Chrome window** with its own profile. The user's personal Chrome stays untouched. NEVER run `pkill Chrome`, `killall Chrome`, or any command that kills Chrome processes. If you need to restart the debug session, use `surfagent start` — it will launch a new one without affecting anything.
+
+---
+
 ## Critical Rule: Always Close Unused Tabs
 
 After completing any task, close tabs you no longer need:
 ```bash
-node dist/browser.js close all  # Keeps only first tab
-node dist/browser.js list       # Verify
+curl -X POST localhost:3456/click -H 'Content-Type: application/json' -d '{"tab":"0","text":"close"}' 
+# Or via CLI:
+node dist/browser.js close all
 ```
 
 ---
 
 ## Setup
 
-### Start Chrome with Debug Mode
-
-Chrome 136+ blocks remote debugging on the default profile for security. Use a separate profile with your cookies copied:
+### Start everything (one command)
 
 ```bash
-# Run the helper script (copies cookies from main profile)
-./scripts/start-chrome.sh
-
-# Or manually:
-pkill -9 "Google Chrome"
-mkdir -p /tmp/chrome-cdp/Default
-cp ~/Library/Application\ Support/Google/Chrome/Default/Cookies /tmp/chrome-cdp/Default/
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --user-data-dir=/tmp/chrome-cdp \
-  --remote-debugging-port=9222
+surfagent start
 ```
 
-### Start the API Server
+This will:
+1. Check if Chrome debug session is already running on port 9222
+2. If not, launch a **new Chrome window** with a separate profile (`/tmp/surfagent-chrome`)
+3. Copy cookies from the user's default Chrome profile (preserves logins)
+4. Start the API server on `http://localhost:3456`
+
+The user's personal Chrome browser is NOT affected. A second Chrome window will appear — this is the debug session that the API controls.
+
+### Other commands
 
 ```bash
-npm run api   # Starts on http://localhost:3456
+surfagent start     # Chrome + API (recommended)
+surfagent chrome    # Launch Chrome debug session only
+surfagent api       # Start API only (Chrome must already be running)
+surfagent health    # Check if Chrome and API are running
 ```
 
 ---
@@ -68,6 +75,9 @@ curl -X POST localhost:3456/eval -H 'Content-Type: application/json' -d '{"tab":
 
 # Bring tab to front
 curl -X POST localhost:3456/focus -H 'Content-Type: application/json' -d '{"tab":"0"}'
+
+# Captcha detection and interaction (experimental)
+curl -X POST localhost:3456/captcha -H 'Content-Type: application/json' -d '{"tab":"0","action":"detect"}'
 
 # List tabs
 curl localhost:3456/tabs
@@ -113,21 +123,22 @@ node dist/browser.js close all               # Close all tabs except first
 ## Architecture
 
 ```
-API Server (:3456)          CLI (node dist/browser.js)
-    │                              │
-    ├── src/api/recon.ts           ├── src/commands/*.ts
-    ├── src/api/act.ts             │
-    └── src/api/server.ts          │
-         │                         │
-         └─────────┬───────────────┘
-                   ▼
-           src/chrome/
-           ├── connector.ts   (CDP connection)
-           ├── tabs.ts        (tab discovery)
-           └── content.ts     (content extraction)
-                   │
-                   ▼
-           Chrome (:9222)
+surfagent start
+    │
+    ├── Launches Chrome (separate window, separate profile)
+    │   └── --remote-debugging-port=9222
+    │       --user-data-dir=/tmp/surfagent-chrome
+    │
+    └── Starts API Server (:3456)
+        │
+        ├── src/api/recon.ts    (page reconnaissance)
+        ├── src/api/act.ts      (fill, click, scroll, read, navigate, eval, captcha)
+        └── src/api/server.ts   (HTTP routing)
+             │
+             └── src/chrome/    (CDP connection layer)
+                  │
+                  ▼
+             Chrome (:9222)     ← separate window, user's Chrome untouched
 ```
 
 ---
@@ -135,8 +146,11 @@ API Server (:3456)          CLI (node dist/browser.js)
 ## Troubleshooting
 
 **"Cannot connect to Chrome"**
-- Ensure Chrome is running with `--remote-debugging-port=9222`
-- Use a custom `--user-data-dir` (required for Chrome 136+)
+- Run `surfagent start` — it handles everything
+- If Chrome is already running with debug mode, use `surfagent api` to just start the API
+
+**A second Chrome window appeared**
+- This is expected. `surfagent` runs its own Chrome with a separate profile. Your personal Chrome is not affected. Close the surfagent Chrome window when you're done.
 
 **Elements not found**
 - Always `/recon` first to see what's available

@@ -11,7 +11,7 @@ npm install -g surfagent
 surfagent start
 ```
 
-That's it. Chrome opens with debug mode, API starts on `http://localhost:3456`. Your agent can start calling it immediately.
+That's it. A **new Chrome window** opens with debug mode — your personal Chrome is not affected. The API starts on `http://localhost:3456` and your agent can start calling it immediately.
 
 ### Other commands
 
