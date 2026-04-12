@@ -1,4 +1,4 @@
-# bnav
+# webpilot
 
 A local API that gives AI agents structured page data from your Chrome browser. Instead of guessing selectors or taking screenshots, your agent gets a complete map of every element, form, and link on the page — then acts on it precisely.
 
@@ -8,8 +8,7 @@ A local API that gives AI agents structured page data from your Chrome browser. 
 
 **1. Install**
 ```bash
-git clone https://github.com/AllAboutAI-YT/bnav.git
-cd bnav
+npm install webpilot
 npm install
 ```
 
