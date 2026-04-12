@@ -357,6 +357,143 @@ export async function readPage(tabPattern, options) {
         throw error;
     }
 }
+const CAPTCHA_DETECT_SCRIPT = `
+(function() {
+  // Find captcha iframes on the page
+  const iframes = document.querySelectorAll('iframe');
+  const captchas = [];
+
+  for (const iframe of iframes) {
+    const src = iframe.src || '';
+    let type = null;
+    if (src.includes('arkoselabs') || src.includes('funcaptcha')) type = 'arkose';
+    else if (src.includes('recaptcha') || src.includes('google.com/recaptcha')) type = 'recaptcha';
+    else if (src.includes('hcaptcha')) type = 'hcaptcha';
+    else if (src.includes('captcha')) type = 'unknown-captcha';
+    else if (src.includes('octocaptcha')) type = 'octocaptcha';
+
+    if (type) {
+      captchas.push({ type, src: src.substring(0, 200), id: iframe.id || null, visible: iframe.offsetWidth > 0 });
+    }
+  }
+
+  return captchas;
+})()
+`;
+const CAPTCHA_INTERACT_SCRIPT = `
+(function(action) {
+  // Find the captcha game document by walking iframe chain
+  function findGameDoc(root, depth) {
+    if (depth > 5) return null;
+    // Check current document for captcha controls
+    const hasControls = root.querySelector('a[aria-label], button[aria-label="Audio"], button[aria-label="Restart"]');
+    if (hasControls && root !== document) return root;
+    // Check child iframes
+    const iframes = root.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!doc) continue;
+        const found = findGameDoc(doc, depth + 1);
+        if (found) return found;
+      } catch(e) { continue; }
+    }
+    return null;
+  }
+
+  let gameDoc = findGameDoc(document, 0);
+
+  if (!gameDoc) return { found: false, error: 'No captcha game frame found' };
+
+  // Read captcha state
+  const instructions = gameDoc.querySelector('.challenge-instructions, [class*="instructions"], [class*="prompt"]');
+  const instructionText = instructions?.innerText?.trim() || null;
+
+  const buttons = [];
+  for (const el of gameDoc.querySelectorAll('a[aria-label], button[aria-label], button[type="submit"], #submit, .submit')) {
+    const label = el.getAttribute('aria-label') || el.innerText?.trim() || el.id;
+    if (label) buttons.push(label);
+  }
+
+  if (action === 'read') {
+    return { found: true, instructions: instructionText, buttons };
+  }
+
+  // Perform action
+  if (action === 'next' || action === 'right') {
+    const btn = gameDoc.querySelector('a[aria-label*="next" i], a[aria-label*="Navigate to next" i]');
+    if (btn) { btn.click(); return { found: true, action: 'next', clicked: true }; }
+    return { found: true, action: 'next', clicked: false, error: 'Next button not found' };
+  }
+
+  if (action === 'prev' || action === 'left') {
+    const btn = gameDoc.querySelector('a[aria-label*="previous" i], a[aria-label*="Navigate to previous" i]');
+    if (btn) { btn.click(); return { found: true, action: 'prev', clicked: true }; }
+    return { found: true, action: 'prev', clicked: false, error: 'Previous button not found' };
+  }
+
+  if (action === 'submit') {
+    const btn = gameDoc.querySelector('button[type="submit"], #submit, .submit, button:not([aria-label*="Audio"]):not([aria-label*="Restart"])');
+    if (btn) { btn.click(); return { found: true, action: 'submit', clicked: true }; }
+    return { found: true, action: 'submit', clicked: false, error: 'Submit button not found' };
+  }
+
+  if (action === 'audio') {
+    const btn = gameDoc.querySelector('button[aria-label*="Audio" i]');
+    if (btn) { btn.click(); return { found: true, action: 'audio', clicked: true }; }
+    return { found: true, action: 'audio', clicked: false };
+  }
+
+  if (action === 'restart') {
+    const btn = gameDoc.querySelector('button[aria-label*="Restart" i]');
+    if (btn) { btn.click(); return { found: true, action: 'restart', clicked: true }; }
+    return { found: true, action: 'restart', clicked: false };
+  }
+
+  return { found: true, error: 'Unknown action: ' + action };
+})
+`;
+export async function captchaInteract(request, options) {
+    const port = options.port || 9222;
+    const host = options.host || 'localhost';
+    if (request.action === 'detect') {
+        // Detect captchas on the main page
+        const tab = await resolveTab(request.tab, port, host);
+        const client = await connectToTab(tab.id, port, host);
+        try {
+            const r = await client.Runtime.evaluate({ expression: CAPTCHA_DETECT_SCRIPT, returnByValue: true });
+            await client.close();
+            return { captchas: r.result.value };
+        }
+        catch (error) {
+            await client.close();
+            throw error;
+        }
+    }
+    // For all other actions, find the captcha iframe and interact
+    // Priority order: arkoselabs (has the game), then recaptcha/hcaptcha, then octocaptcha (wrapper)
+    const allTargets = await CDP.List({ port, host });
+    const iframeTargets = allTargets.filter((t) => t.type === 'iframe');
+    const captchaTarget = iframeTargets.find((t) => t.url.includes('arkoselabs') || t.url.includes('funcaptcha')) ||
+        iframeTargets.find((t) => t.url.includes('recaptcha') || t.url.includes('hcaptcha')) ||
+        iframeTargets.find((t) => t.url.includes('octocaptcha') || t.url.includes('captcha'));
+    if (!captchaTarget) {
+        return { found: false, error: 'No captcha iframe found in CDP targets' };
+    }
+    const client = await connectToTab(captchaTarget.id, port, host);
+    try {
+        const r = await client.Runtime.evaluate({
+            expression: `(${CAPTCHA_INTERACT_SCRIPT})(${JSON.stringify(request.action)})`,
+            returnByValue: true
+        });
+        await client.close();
+        return r.result.value;
+    }
+    catch (error) {
+        await client.close();
+        throw error;
+    }
+}
 export async function focusTab(tabPattern, options) {
     const port = options.port || 9222;
     const host = options.host || 'localhost';

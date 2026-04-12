@@ -56,6 +56,10 @@ export interface ReconResult {
         text: string;
         selector: string;
     }[];
+    captchas: {
+        type: string;
+        src: string;
+    }[];
 }
 export declare function reconUrl(url: string, options: {
     port?: number;

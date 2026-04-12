@@ -45,6 +45,7 @@ export interface ReconResult {
   contentSummary: string;
   landmarks: { role: string; label: string | null; tag: string }[];
   overlays: { type: string; text: string; selector: string }[];
+  captchas: { type: string; src: string }[];
 }
 
 const EXTRACTION_SCRIPT = `
@@ -255,6 +256,19 @@ const EXTRACTION_SCRIPT = `
     }
   }
 
+  // ---- Captcha detection ----
+  const captchas = [];
+  for (const iframe of document.querySelectorAll('iframe')) {
+    const src = iframe.src || '';
+    let type = null;
+    if (src.includes('arkoselabs') || src.includes('funcaptcha')) type = 'arkose';
+    else if (src.includes('recaptcha') || src.includes('google.com/recaptcha')) type = 'recaptcha';
+    else if (src.includes('hcaptcha')) type = 'hcaptcha';
+    else if (src.includes('octocaptcha')) type = 'octocaptcha';
+    else if (src.includes('captcha')) type = 'captcha';
+    if (type) captchas.push({ type, src: src.substring(0, 200) });
+  }
+
   // ---- Content summary ----
   const clone = document.body.cloneNode(true);
   clone.querySelectorAll('script,style,noscript,svg').forEach(e => e.remove());
@@ -274,6 +288,7 @@ const EXTRACTION_SCRIPT = `
     forms,
     landmarks,
     overlays,
+    captchas,
     contentSummary
   };
 })()
@@ -341,6 +356,7 @@ export async function reconUrl(
       contentSummary: data.contentSummary,
       landmarks: data.landmarks,
       overlays: data.overlays || [],
+      captchas: data.captchas || [],
     };
   } catch (error) {
     if (client) await client.close();
@@ -402,6 +418,7 @@ export async function reconTab(
       contentSummary: data.contentSummary,
       landmarks: data.landmarks,
       overlays: data.overlays || [],
+      captchas: data.captchas || [],
     };
   } catch (error) {
     await client.close();

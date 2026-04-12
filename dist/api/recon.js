@@ -209,6 +209,19 @@ const EXTRACTION_SCRIPT = `
     }
   }
 
+  // ---- Captcha detection ----
+  const captchas = [];
+  for (const iframe of document.querySelectorAll('iframe')) {
+    const src = iframe.src || '';
+    let type = null;
+    if (src.includes('arkoselabs') || src.includes('funcaptcha')) type = 'arkose';
+    else if (src.includes('recaptcha') || src.includes('google.com/recaptcha')) type = 'recaptcha';
+    else if (src.includes('hcaptcha')) type = 'hcaptcha';
+    else if (src.includes('octocaptcha')) type = 'octocaptcha';
+    else if (src.includes('captcha')) type = 'captcha';
+    if (type) captchas.push({ type, src: src.substring(0, 200) });
+  }
+
   // ---- Content summary ----
   const clone = document.body.cloneNode(true);
   clone.querySelectorAll('script,style,noscript,svg').forEach(e => e.remove());
@@ -228,6 +241,7 @@ const EXTRACTION_SCRIPT = `
     forms,
     landmarks,
     overlays,
+    captchas,
     contentSummary
   };
 })()
@@ -281,6 +295,7 @@ export async function reconUrl(url, options) {
             contentSummary: data.contentSummary,
             landmarks: data.landmarks,
             overlays: data.overlays || [],
+            captchas: data.captchas || [],
         };
     }
     catch (error) {
@@ -337,6 +352,7 @@ export async function reconTab(tabPattern, options) {
             contentSummary: data.contentSummary,
             landmarks: data.landmarks,
             overlays: data.overlays || [],
+            captchas: data.captchas || [],
         };
     }
     catch (error) {

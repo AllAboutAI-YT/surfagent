@@ -127,6 +127,60 @@ Recon a cross-origin iframe by matching its URL. Iframes are searched automatica
 - `forms[].fields[].options` — for `<select>` dropdowns, lists available options.
 - `contentSummary` — quick read of page text without needing to parse elements.
 - `overlays[]` — detected modals, dialogs, cookie banners, or blocking overlays. If non-empty, dismiss them before interacting with the page.
+- `captchas[]` — detected captcha iframes (Arkose/FunCaptcha, reCAPTCHA, hCaptcha, OctoCaptcha). If non-empty, use `/captcha` to interact with them.
+
+---
+
+### POST /captcha
+
+Detect and interact with captchas embedded in iframes. Automatically finds the captcha game frame across nested iframes (including Arkose/FunCaptcha which nests 3 levels deep).
+
+**Detect captchas on a page:**
+```json
+{ "tab": "0", "action": "detect" }
+```
+
+Response:
+```json
+{
+  "captchas": [
+    { "type": "octocaptcha", "src": "https://octocaptcha.com/...", "visible": true }
+  ]
+}
+```
+
+**Read captcha state (what buttons are available):**
+```json
+{ "action": "read" }
+```
+
+Response:
+```json
+{
+  "found": true,
+  "instructions": "Rotate the image to match...",
+  "buttons": ["Navigate to previous image", "Navigate to next image", "Audio", "Restart"]
+}
+```
+
+**Interact with captcha:**
+```json
+{ "action": "next" }
+```
+
+Actions:
+- `"next"` — rotate/navigate to next image
+- `"prev"` — rotate/navigate to previous image
+- `"submit"` — submit the answer
+- `"audio"` — switch to audio challenge
+- `"restart"` — restart the captcha
+
+Response:
+```json
+{ "found": true, "action": "next", "clicked": true }
+```
+
+Note: `detect` requires a `tab` field. All other actions automatically find the captcha iframe in CDP targets — no `tab` needed.
 
 ---
 
@@ -383,6 +437,20 @@ All POST endpoints accept a `tab` field. It resolves in this order:
 ---
 
 ## Patterns
+
+### Handling a captcha
+```
+1. POST /recon    { "tab": "0" }
+   → Response includes captchas: [{"type": "arkose", ...}]
+2. POST /captcha  { "action": "read" }
+   → See available buttons and instructions
+3. POST /captcha  { "action": "next" }
+   → Rotate/interact with the captcha (repeat as needed)
+4. POST /captcha  { "action": "submit" }
+   → Submit the answer
+5. POST /recon    { "tab": "0" }
+   → Check if captcha is gone and page proceeded
+```
 
 ### Login flow
 ```

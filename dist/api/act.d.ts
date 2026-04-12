@@ -70,6 +70,14 @@ export declare function readPage(tabPattern: string, options: {
     host?: string;
     selector?: string;
 }): Promise<any>;
+export interface CaptchaRequest {
+    tab: string;
+    action: 'detect' | 'read' | 'next' | 'prev' | 'submit' | 'audio' | 'restart';
+}
+export declare function captchaInteract(request: CaptchaRequest, options: {
+    port?: number;
+    host?: string;
+}): Promise<any>;
 export declare function focusTab(tabPattern: string, options: {
     port?: number;
     host?: string;
