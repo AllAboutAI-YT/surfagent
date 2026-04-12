@@ -118,7 +118,7 @@ curl -X POST localhost:3456/eval -H 'Content-Type: application/json' \
 | `/scroll` | POST | Scroll with content preview |
 | `/navigate` | POST | Go to URL, back, or forward (same tab) |
 | `/eval` | POST | Run JavaScript in any tab or iframe |
-| `/captcha` | POST | Detect and interact with captchas (Arkose, reCAPTCHA, hCaptcha) |
+| `/captcha` | POST | Detect captchas, basic interaction (experimental) |
 | `/focus` | POST | Bring a tab to the front |
 | `/tabs` | GET | List open tabs |
 | `/health` | GET | Check Chrome connection |

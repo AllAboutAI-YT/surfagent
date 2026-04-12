@@ -131,9 +131,13 @@ Recon a cross-origin iframe by matching its URL. Iframes are searched automatica
 
 ---
 
-### POST /captcha
+### POST /captcha (experimental)
 
-Detect and interact with captchas embedded in iframes. Automatically finds the captcha game frame across nested iframes (including Arkose/FunCaptcha which nests 3 levels deep).
+Detect captcha iframes on a page and attempt basic interaction. Detection is reliable — interaction is best-effort and depends on the captcha type.
+
+**Supported detection:** Arkose/FunCaptcha, reCAPTCHA, hCaptcha, OctoCaptcha, and generic captcha iframes.
+
+**Supported interaction:** Currently tested with Arkose/FunCaptcha (image rotation). Other captcha types are detected but interaction may not work — they have different DOM structures and controls.
 
 **Detect captchas on a page:**
 ```json
@@ -149,7 +153,7 @@ Response:
 }
 ```
 
-**Read captcha state (what buttons are available):**
+**Read captcha state:**
 ```json
 { "action": "read" }
 ```
@@ -163,24 +167,14 @@ Response:
 }
 ```
 
-**Interact with captcha:**
+**Interact:**
 ```json
 { "action": "next" }
 ```
 
-Actions:
-- `"next"` — rotate/navigate to next image
-- `"prev"` — rotate/navigate to previous image
-- `"submit"` — submit the answer
-- `"audio"` — switch to audio challenge
-- `"restart"` — restart the captcha
+Actions: `"next"`, `"prev"`, `"submit"`, `"audio"`, `"restart"`
 
-Response:
-```json
-{ "found": true, "action": "next", "clicked": true }
-```
-
-Note: `detect` requires a `tab` field. All other actions automatically find the captcha iframe in CDP targets — no `tab` needed.
+Note: `detect` requires a `tab` field. Other actions auto-find the captcha iframe. If interaction fails for an unsupported captcha type, fall back to manual solving in the browser.
 
 ---
 
@@ -438,14 +432,14 @@ All POST endpoints accept a `tab` field. It resolves in this order:
 
 ## Patterns
 
-### Handling a captcha
+### Handling a captcha (experimental)
 ```
 1. POST /recon    { "tab": "0" }
    → Response includes captchas: [{"type": "arkose", ...}]
 2. POST /captcha  { "action": "read" }
-   → See available buttons and instructions
+   → See available buttons — if empty, this captcha type may need manual solving
 3. POST /captcha  { "action": "next" }
-   → Rotate/interact with the captcha (repeat as needed)
+   → Interact with the captcha (repeat as needed)
 4. POST /captcha  { "action": "submit" }
    → Submit the answer
 5. POST /recon    { "tab": "0" }
