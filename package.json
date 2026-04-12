@@ -1,13 +1,17 @@
 {
   "name": "surfagent",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local API that gives AI agents structured page data from Chrome for fast, precise web navigation",
   "main": "dist/api/server.js",
   "type": "module",
+  "bin": {
+    "surfagent": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "api": "node dist/api/server.js"
+    "api": "node dist/api/server.js",
+    "start": "node dist/cli.js start"
   },
   "dependencies": {
     "chrome-remote-interface": "^0.33.0",

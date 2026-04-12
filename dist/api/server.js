@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http from 'node:http';
 import { reconUrl, reconTab } from './recon.js';
-import { fillFields, clickElement, scrollPage, navigatePage, evalInTab, focusTab, readPage, captchaInteract, screenshotTab } from './act.js';
+import { fillFields, clickElement, scrollPage, navigatePage, evalInTab, focusTab, readPage, captchaInteract } from './act.js';
 import { getAllTabs } from '../chrome/tabs.js';
 const PORT = parseInt(process.env.API_PORT || '3456', 10);
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
@@ -81,21 +81,6 @@ const server = http.createServer(async (req, res) => {
             }
             const result = await scrollPage(body, { port: CDP_PORT, host: CDP_HOST });
             return json(res, 200, result);
-        }
-        // POST /screenshot — capture full page, element, or region at 2x resolution
-        if (path === '/screenshot' && req.method === 'POST') {
-            const body = JSON.parse(await readBody(req));
-            if (!body.tab) {
-                return json(res, 400, { error: 'Provide "tab", optional "selector" or "clip" {x,y,width,height}' });
-            }
-            const data = await screenshotTab(body.tab, { port: CDP_PORT, host: CDP_HOST, selector: body.selector, clip: body.clip });
-            // Return as base64 or save to file
-            if (body.output) {
-                const fs = await import('node:fs');
-                fs.writeFileSync(body.output, Buffer.from(data, 'base64'));
-                return json(res, 200, { success: true, output: body.output });
-            }
-            return json(res, 200, { data });
         }
         // POST /captcha — detect and interact with captchas
         if (path === '/captcha' && req.method === 'POST') {

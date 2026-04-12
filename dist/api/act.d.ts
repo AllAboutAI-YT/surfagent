@@ -70,17 +70,6 @@ export declare function readPage(tabPattern: string, options: {
     host?: string;
     selector?: string;
 }): Promise<any>;
-export declare function screenshotTab(tabPattern: string, options: {
-    port?: number;
-    host?: string;
-    selector?: string;
-    clip?: {
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-    };
-}): Promise<string>;
 export interface CaptchaRequest {
     tab: string;
     action: 'detect' | 'read' | 'next' | 'prev' | 'submit' | 'audio' | 'restart';

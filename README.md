@@ -1,4 +1,4 @@
-# webpilot
+# surfagent
 
 A local API that gives AI agents structured page data from your Chrome browser. Instead of guessing selectors or taking screenshots, your agent gets a complete map of every element, form, and link on the page — then acts on it precisely.
 
@@ -6,23 +6,22 @@ A local API that gives AI agents structured page data from your Chrome browser. 
 
 ## Quick Start
 
-**1. Install**
 ```bash
-npm install webpilot
-npm install
+npm install -g surfagent
+surfagent start
 ```
 
-**2. Start Chrome with debugging**
-```bash
-./scripts/start-chrome.sh
-```
+That's it. Chrome opens with debug mode, API starts on `http://localhost:3456`. Your agent can start calling it immediately.
 
-**3. Start the API**
-```bash
-npm run api
-```
+### Other commands
 
-That's it. The API is running on `http://localhost:3456`.
+```bash
+surfagent start     # Start Chrome + API (one command)
+surfagent chrome    # Start Chrome debug session only
+surfagent api       # Start API only (Chrome must be running)
+surfagent health    # Check if everything is running
+surfagent help      # Show all options
+```
 
 ## Your First Recon
 
