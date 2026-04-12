@@ -78,8 +78,11 @@ export async function fillFields(request, options) {
             if (actual === field.value) {
                 results.push({ selector: field.selector, success: true });
             }
+            else if (actual === undefined || actual === null) {
+                results.push({ selector: field.selector, success: false, error: `Element not found or has no value: ${field.selector}` });
+            }
             else {
-                results.push({ selector: field.selector, success: true, error: `Value mismatch: got "${actual}"` });
+                results.push({ selector: field.selector, success: false, error: `Value mismatch: expected "${field.value}", got "${actual}"` });
             }
         }
         catch (error) {
@@ -256,12 +259,14 @@ export async function evalInTab(tab, expression, options) {
     const resolved = await resolveTab(tab, port, host);
     const client = await connectToTab(resolved.id, port, host);
     try {
-        const result = await client.Runtime.evaluate({
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Eval timed out after 30s')), 30000));
+        const evalPromise = client.Runtime.evaluate({
             expression,
             returnByValue: true
         });
+        const result = await Promise.race([evalPromise, timeout]);
         await client.close();
-        return result.result.value;
+        return result.result.value ?? null;
     }
     catch (error) {
         await client.close();
