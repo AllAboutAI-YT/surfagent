@@ -1,0 +1,25 @@
+{
+  "name": "browser-context-cli",
+  "version": "1.0.0",
+  "description": "CLI tool to fetch content from Chrome tabs via CDP",
+  "main": "dist/browser.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "api": "node dist/api/server.js",
+    "whatsapp": "node whatsapp-bot.js"
+  },
+  "dependencies": {
+    "@polymarket/clob-client": "^5.5.0",
+    "chrome-remote-interface": "^0.33.0",
+    "commander": "^12.0.0",
+    "ethers": "^5.8.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#main"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
