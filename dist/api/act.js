@@ -357,6 +357,33 @@ export async function readPage(tabPattern, options) {
         throw error;
     }
 }
+export async function screenshotTab(tabPattern, options) {
+    const port = options.port || 9222;
+    const host = options.host || 'localhost';
+    const tab = await resolveTab(tabPattern, port, host);
+    const client = await connectToTab(tab.id, port, host);
+    try {
+        // If selector provided, get its bounding rect and use as clip
+        let clip = options.clip;
+        if (options.selector && !clip) {
+            const r = await client.Runtime.evaluate({
+                expression: `(function(){ const el = document.querySelector(${JSON.stringify(options.selector)}); if(!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, scale: 1 } })()`,
+                returnByValue: true
+            });
+            clip = r.result.value;
+        }
+        const params = { format: 'png', fromSurface: true };
+        if (clip)
+            params.clip = { ...clip, scale: 2 }; // 2x for sharper zoom
+        const result = await client.Page.captureScreenshot(params);
+        await client.close();
+        return result.data; // base64 PNG
+    }
+    catch (error) {
+        await client.close();
+        throw error;
+    }
+}
 const CAPTCHA_DETECT_SCRIPT = `
 (function() {
   // Find captcha iframes on the page

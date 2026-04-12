@@ -1,5 +1,5 @@
 {
-  "name": "webpilot",
+  "name": "surfagent",
   "version": "1.0.0",
   "description": "Local API that gives AI agents structured page data from Chrome for fast, precise web navigation",
   "main": "dist/api/server.js",
