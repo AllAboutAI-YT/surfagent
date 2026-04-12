@@ -27,6 +27,11 @@ function json(res: http.ServerResponse, status: number, data: any) {
   res.end(JSON.stringify(data));
 }
 
+function parseBody(raw: string): any {
+  if (!raw || !raw.trim()) throw new SyntaxError('Empty request body');
+  return JSON.parse(raw);
+}
+
 function cors(res: http.ServerResponse) {
   res.writeHead(204, {
     'Access-Control-Allow-Origin': '*',
@@ -45,7 +50,7 @@ const server = http.createServer(async (req, res) => {
   try {
     // POST /recon — full page reconnaissance
     if (path === '/recon' && req.method === 'POST') {
-      const body: RequestBody = JSON.parse(await readBody(req));
+      const body: RequestBody = parseBody(await readBody(req));
 
       if (!body.url && !body.tab) {
         return json(res, 400, { error: 'Provide "url" (to open new page) or "tab" (to recon existing tab)' });
@@ -73,9 +78,12 @@ const server = http.createServer(async (req, res) => {
 
     // POST /fill — fill form fields via CDP keystrokes
     if (path === '/fill' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req));
+      const body = parseBody(await readBody(req));
       if (!body.tab || !body.fields) {
         return json(res, 400, { error: 'Provide "tab" and "fields" [{ selector, value }]' });
+      }
+      if (!Array.isArray(body.fields)) {
+        return json(res, 400, { error: '"fields" must be an array of { selector, value }' });
       }
       const start = Date.now();
       const result = await fillFields(body, { port: CDP_PORT, host: CDP_HOST });
@@ -84,7 +92,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /click — click an element
     if (path === '/click' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req));
+      const body = parseBody(await readBody(req));
       if (!body.tab || (!body.selector && !body.text)) {
         return json(res, 400, { error: 'Provide "tab" and "selector" or "text"' });
       }
@@ -94,7 +102,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /scroll — scroll a page
     if (path === '/scroll' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req));
+      const body = parseBody(await readBody(req));
       if (!body.tab) {
         return json(res, 400, { error: 'Provide "tab", optional "direction" (down/up), "amount" (pixels)' });
       }
@@ -104,7 +112,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /captcha — detect and interact with captchas
     if (path === '/captcha' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req));
+      const body = parseBody(await readBody(req));
       if (!body.action) {
         return json(res, 400, { error: 'Provide "action": detect, read, next, prev, submit, audio, restart' });
       }
@@ -117,7 +125,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /read — get structured readable content from a page
     if (path === '/read' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req));
+      const body = parseBody(await readBody(req));
       if (!body.tab) {
         return json(res, 400, { error: 'Provide "tab", optional "selector"' });
       }
@@ -127,7 +135,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /focus — bring a tab to front
     if (path === '/focus' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req));
+      const body = parseBody(await readBody(req));
       if (!body.tab) {
         return json(res, 400, { error: 'Provide "tab"' });
       }
@@ -137,7 +145,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /eval — run JavaScript in a tab or iframe
     if (path === '/eval' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req));
+      const body = parseBody(await readBody(req));
       if (!body.tab || !body.expression) {
         return json(res, 400, { error: 'Provide "tab" and "expression"' });
       }
@@ -147,7 +155,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /navigate — go to url, back, or forward in same tab
     if (path === '/navigate' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req));
+      const body = parseBody(await readBody(req));
       if (!body.tab) {
         return json(res, 400, { error: 'Provide "tab" and one of: "url", "back":true, "forward":true' });
       }
@@ -175,6 +183,16 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${new Date().toISOString()}] Error:`, message);
+
+    if (error instanceof SyntaxError) {
+      return json(res, 400, { error: 'Invalid JSON: ' + message });
+    }
+    if (message.includes('Tab not found')) {
+      return json(res, 404, { error: message });
+    }
+    if (message.includes('Cannot connect to Chrome') || message.includes('ECONNREFUSED')) {
+      return json(res, 503, { error: 'Chrome not running. Start with: surfagent start' });
+    }
     json(res, 500, { error: message });
   }
 });
