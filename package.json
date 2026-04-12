@@ -1,7 +1,29 @@
 {
   "name": "surfagent",
-  "version": "1.0.4",
-  "description": "Local API that gives AI agents structured page data from Chrome for fast, precise web navigation",
+  "version": "1.0.5",
+  "description": "Browser automation API for AI agents — structured page recon, form filling, clicking, and navigation via Chrome CDP",
+  "keywords": [
+    "ai-agent",
+    "browser-automation",
+    "chrome-devtools",
+    "cdp",
+    "web-scraping",
+    "automation",
+    "langchain",
+    "crewai",
+    "openai",
+    "claude",
+    "agent",
+    "browser",
+    "recon",
+    "selenium-alternative",
+    "puppeteer-alternative"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AllAboutAI-YT/surfagent"
+  },
+  "license": "MIT",
   "main": "dist/api/server.js",
   "type": "module",
   "bin": {

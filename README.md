@@ -1,8 +1,17 @@
 # surfagent
 
-A local API that gives AI agents structured page data from your Chrome browser. Instead of guessing selectors or taking screenshots, your agent gets a complete map of every element, form, and link on the page — then acts on it precisely.
+**Browser automation API for AI agents.** Give any AI agent the ability to see, navigate, and interact with real web pages through Chrome.
 
-**One recon call replaces dozens of trial-and-error clicks.**
+`npm install -g surfagent` — two commands to give your agent a browser.
+
+[![npm version](https://img.shields.io/npm/v/surfagent.svg)](https://www.npmjs.com/package/surfagent)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+**surfagent** connects to a local Chrome browser via CDP and exposes a simple HTTP API that returns structured page data — every interactive element, form field, link, and CSS selector — so AI agents can navigate websites fast and precisely without screenshots or trial-and-error.
+
+**Works with any AI agent framework:** LangChain, CrewAI, AutoGPT, Claude Code, OpenAI Agents, custom agents — anything that can make HTTP calls.
 
 ## Quick Start
 
@@ -11,9 +20,92 @@ npm install -g surfagent
 surfagent start
 ```
 
-That's it. A **new Chrome window** opens with debug mode — your personal Chrome is not affected. The API starts on `http://localhost:3456` and your agent can start calling it immediately.
+A **new Chrome window** opens with debug mode — your personal Chrome is not affected. The API starts on `http://localhost:3456`.
 
-### Other commands
+## Why surfagent?
+
+| Without surfagent | With surfagent |
+|---|---|
+| Agent takes screenshots, sends to vision model | Agent calls `/recon`, gets structured JSON in 30ms |
+| Guesses CSS selectors, fails, retries | Gets exact selectors from recon response |
+| Can't read forms, dropdowns, or modals | Gets form schemas with labels, types, required flags |
+| Breaks on SPAs, iframes, shadow DOM | Handles all of them out of the box |
+| Slow (2-5s per screenshot round-trip) | Fast (20-60ms per API call on existing tabs) |
+
+## How Agents Use It
+
+The workflow is: **recon → act → read**.
+
+```
+1. POST /recon   → get the page map (selectors, forms, elements)
+2. POST /click   → click something using a selector from step 1
+   POST /fill    → fill a form using selectors from step 1
+3. POST /read    → check what happened (success? error? new content?)
+4. POST /recon   → if the page changed, map it again
+```
+
+### Example: search on any website
+
+```bash
+# 1. Recon the page — find the search input
+curl -X POST localhost:3456/recon -H 'Content-Type: application/json' \
+  -d '{"tab":"0"}'
+# Response includes: { "selector": "input[name='search']", "text": "Search..." }
+
+# 2. Type and submit
+curl -X POST localhost:3456/fill -H 'Content-Type: application/json' \
+  -d '{"tab":"0", "fields":[{"selector":"input[name=\"search\"]","value":"AI agents"}], "submit":"enter"}'
+
+# 3. Read the results
+curl -X POST localhost:3456/read -H 'Content-Type: application/json' \
+  -d '{"tab":"0"}'
+```
+
+## All Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/recon` | POST | Full page map — every element, form, selector, heading, nav link, metadata, captcha detection |
+| `/read` | POST | Structured page content — headings, tables, code blocks, notifications, result areas |
+| `/fill` | POST | Fill form fields with real CDP keystrokes (works with React, Vue, SPAs) |
+| `/click` | POST | Click by CSS selector or text match (handles `target="_blank"` automatically) |
+| `/scroll` | POST | Scroll page, returns visible content preview and scroll position |
+| `/navigate` | POST | Go to URL, back, or forward in the same tab |
+| `/eval` | POST | Run JavaScript in any tab or cross-origin iframe |
+| `/captcha` | POST | Detect and interact with captchas — Arkose, reCAPTCHA, hCaptcha (experimental) |
+| `/focus` | POST | Bring a tab to the front in Chrome |
+| `/tabs` | GET | List all open Chrome tabs |
+| `/health` | GET | Check if Chrome and API are connected |
+
+Full API reference with request/response schemas: **[API.md](./API.md)**
+
+## Key Features
+
+**Page reconnaissance** — one call returns every interactive element with stable CSS selectors, form schemas with field labels and validation, navigation structure, metadata, and content summary.
+
+**Real keyboard input** — fills forms using CDP `Input.dispatchKeyEvent`, not JavaScript value injection. Works with React, Vue, Angular, and any framework-controlled inputs.
+
+**Cross-origin iframe support** — target iframes by domain (`"tab": "stripe.com"`). CDP connects to them as separate targets, bypassing same-origin restrictions.
+
+**SPA navigation** — handles single-page apps (YouTube, Gmail, Google Flights). Enter key submission, client-side routing, dynamic content — all work.
+
+**Captcha detection** — `/recon` automatically detects captcha iframes (Arkose, reCAPTCHA, hCaptcha) and flags them. `/captcha` endpoint provides basic interaction.
+
+**Overlay detection** — modals, cookie banners, and blocking overlays are detected and reported so agents can dismiss them before interacting.
+
+**Same-tab navigation** — links with `target="_blank"` are automatically opened in the same tab instead of spawning new ones.
+
+## Tab Targeting
+
+Every endpoint accepts a `tab` field:
+
+```json
+{"tab": "0"}           // by index
+{"tab": "github"}      // partial match on URL or title
+{"tab": "stripe.com"}  // matches cross-origin iframes too
+```
+
+## Commands
 
 ```bash
 surfagent start     # Start Chrome + API (one command)
@@ -23,141 +115,9 @@ surfagent health    # Check if everything is running
 surfagent help      # Show all options
 ```
 
-## Your First Recon
-
-Open any website in Chrome, then:
-
-```bash
-curl -s -X POST localhost:3456/recon -d '{"tab":"0"}' -H 'Content-Type: application/json'
-```
-
-You get back:
-- Every clickable element with a CSS selector
-- Every form with field labels, types, and required flags
-- Page headings, navigation links, metadata
-- Overlay/modal detection
-
-Your agent uses those selectors to interact — no guessing.
-
-## What Can It Do?
-
-### Map a page
-```bash
-# Get full page structure
-curl -X POST localhost:3456/recon -H 'Content-Type: application/json' \
-  -d '{"tab":"0"}'
-
-# Open a URL and map it
-curl -X POST localhost:3456/recon -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com", "keepTab": true}'
-```
-
-### Read page content
-```bash
-# Structured text — headings, tables, notifications
-curl -X POST localhost:3456/read -H 'Content-Type: application/json' \
-  -d '{"tab":"0"}'
-
-# Read a specific element
-curl -X POST localhost:3456/read -H 'Content-Type: application/json' \
-  -d '{"tab":"0", "selector":".results"}'
-```
-
-### Fill forms
-```bash
-curl -X POST localhost:3456/fill -H 'Content-Type: application/json' \
-  -d '{"tab":"0", "fields":[
-    {"selector":"#email", "value":"me@example.com"},
-    {"selector":"#password", "value":"secret"}
-  ], "submit":"enter"}'
-```
-
-### Click elements
-```bash
-# By text
-curl -X POST localhost:3456/click -H 'Content-Type: application/json' \
-  -d '{"tab":"0", "text":"Sign In"}'
-
-# By selector (from recon)
-curl -X POST localhost:3456/click -H 'Content-Type: application/json' \
-  -d '{"tab":"0", "selector":"#submit-btn"}'
-```
-
-### Navigate
-```bash
-# Go to URL (same tab)
-curl -X POST localhost:3456/navigate -H 'Content-Type: application/json' \
-  -d '{"tab":"0", "url":"https://example.com"}'
-
-# Go back
-curl -X POST localhost:3456/navigate -H 'Content-Type: application/json' \
-  -d '{"tab":"0", "back":true}'
-```
-
-### Scroll
-```bash
-curl -X POST localhost:3456/scroll -H 'Content-Type: application/json' \
-  -d '{"tab":"0", "direction":"down", "amount":1000}'
-```
-
-### Run JavaScript
-```bash
-curl -X POST localhost:3456/eval -H 'Content-Type: application/json' \
-  -d '{"tab":"0", "expression":"document.title"}'
-```
-
-## All Endpoints
-
-| Endpoint | Method | What it does |
-|---|---|---|
-| `/recon` | POST | Full page map — elements, forms, selectors, metadata |
-| `/read` | POST | Structured page content — headings, tables, notifications |
-| `/fill` | POST | Fill form fields with real keystrokes |
-| `/click` | POST | Click by selector or text |
-| `/scroll` | POST | Scroll with content preview |
-| `/navigate` | POST | Go to URL, back, or forward (same tab) |
-| `/eval` | POST | Run JavaScript in any tab or iframe |
-| `/captcha` | POST | Detect captchas, basic interaction (experimental) |
-| `/focus` | POST | Bring a tab to the front |
-| `/tabs` | GET | List open tabs |
-| `/health` | GET | Check Chrome connection |
-
-Full API reference with response schemas: [API.md](./API.md)
-
-## Tab Targeting
-
-Every endpoint takes a `tab` field. You can target tabs three ways:
-
-```json
-{"tab": "0"}           // by index
-{"tab": "github"}      // by URL or title (partial match)
-{"tab": "cdpn.io"}     // cross-origin iframes work too
-```
-
-## How Agents Should Use This
-
-The workflow is: **recon → act → read**.
-
-```
-1. /recon   → get the page map (selectors, forms, elements)
-2. /click   → click something using a selector from step 1
-   /fill    → fill a form using selectors from step 1
-3. /read    → check what happened (success message? error? new content?)
-4. /recon   → if the page changed, map it again
-```
-
-Agents never need to guess selectors or parse screenshots. The recon response has everything.
-
 ## Tested On
 
-- Google Flights (autocomplete dropdowns, date pickers, complex forms)
-- YouTube (SPA navigation, search, video selection)
-- GitHub (login forms, repository pages)
-- Supabase (dashboard navigation, SQL editor)
-- Hacker News (link following, content reading)
-- Reddit (thread navigation, comments)
-- CodePen (cross-origin iframe interaction)
-- Polymarket (market data extraction)
+Google Flights, YouTube, GitHub, Supabase, Hacker News, Reddit, CodePen, Polymarket, npm — including autocomplete dropdowns, date pickers, complex forms, SPA navigation, cross-origin iframes, and captchas.
 
 ## Platform Support
 
@@ -172,6 +132,10 @@ Agents never need to guess selectors or parse screenshots. The recon response ha
 - macOS or Linux
 - Chrome (any recent version)
 - Node.js 18+
+
+## Contributing
+
+Issues and PRs welcome at [github.com/AllAboutAI-YT/surfagent](https://github.com/AllAboutAI-YT/surfagent).
 
 ## License
 
