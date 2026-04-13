@@ -22,7 +22,7 @@ async function resolveTab(tabPattern: string, port: number, host: string): Promi
     }
   }
 
-  if (!tab) throw new Error(`Tab not found: ${tabPattern}`);
+  if (!tab) throw new Error(`Tab not found: ${tabPattern.length > 100 ? tabPattern.substring(0, 100) + '...' : tabPattern}`);
   return tab;
 }
 

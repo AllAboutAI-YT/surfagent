@@ -14,13 +14,13 @@ import { descCommand } from './commands/desc.js';
 import { closeCommand } from './commands/close.js';
 const program = new Command();
 program
-    .name('browser')
-    .description('CLI tool to interact with Chrome tabs via CDP')
-    .version('1.0.0');
+    .name('surfagent')
+    .description('Browser automation CLI for AI agents — interact with Chrome tabs via CDP')
+    .version('1.1.1');
 // Global options
 program
     .option('-p, --port <number>', 'Chrome debugging port', '9222')
-    .option('-h, --host <string>', 'Chrome debugging host', 'localhost');
+    .option('-H, --host <string>', 'Chrome debugging host', 'localhost');
 // List command
 program
     .command('list')

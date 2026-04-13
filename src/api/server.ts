@@ -208,7 +208,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    json(res, 404, { error: 'Not found. Endpoints: POST /recon, GET /tabs, GET /health' });
+    json(res, 404, { error: 'Not found. Endpoints: POST /recon, /read, /fill, /click, /type, /scroll, /navigate, /eval, /dismiss, /captcha, /focus | GET /tabs, /health' });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${new Date().toISOString()}] Error:`, message);

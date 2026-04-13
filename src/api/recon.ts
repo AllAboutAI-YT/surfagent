@@ -343,7 +343,15 @@ export async function reconUrl(
       expression: 'document.title',
       returnByValue: true
     });
-    const title = titleResult.result.value as string || '';
+    let title = titleResult.result.value as string || '';
+    // Fall back to CDP target title when document.title is empty (e.g. pages with no <title> tag)
+    if (!title) {
+      try {
+        const targets = await CDP.List({ port, host });
+        const t = targets.find((t: any) => t.id === target.id);
+        if (t?.title) title = t.title;
+      } catch {}
+    }
 
     // Get current URL (may have redirected)
     const urlResult = await client.Runtime.evaluate({
@@ -370,7 +378,7 @@ export async function reconUrl(
 
     return {
       url: finalUrl,
-      title,
+      title: title || target.title || '',
       tabId: target.id,
       timestamp: new Date().toISOString(),
       meta: data.meta,

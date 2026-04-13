@@ -20,7 +20,7 @@ async function resolveTab(tabPattern, port, host) {
         }
     }
     if (!tab)
-        throw new Error(`Tab not found: ${tabPattern}`);
+        throw new Error(`Tab not found: ${tabPattern.length > 100 ? tabPattern.substring(0, 100) + '...' : tabPattern}`);
     return tab;
 }
 export async function fillFields(request, options) {

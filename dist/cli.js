@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execSync, spawn } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,8 +50,8 @@ function getChromePath() {
     };
     for (const p of paths[os] || []) {
         try {
-            execSync(`test -f "${p}"`, { stdio: 'ignore' });
-            return p;
+            if (fs.existsSync(p))
+                return p;
         }
         catch {
             continue;
@@ -120,7 +121,7 @@ Environment variables:
   CHROME_USER_DATA_DIR  Chrome profile directory (default: /tmp/surfagent-chrome)
 
 After starting, your AI agent can call http://localhost:3456
-Full API docs: https://github.com/AllAboutAI-YT/webpilot#readme
+Full API docs: https://github.com/AllAboutAI-YT/surfagent#readme
 `);
         return;
     }
