@@ -37,60 +37,93 @@ export async function fillFields(request, options) {
     const results = [];
     for (const field of request.fields) {
         try {
-            // Focus the element and clear it
-            await client.Runtime.evaluate({
-                expression: `
-          (function() {
-            const el = document.querySelector(${JSON.stringify(field.selector)});
-            if (!el) throw new Error('Element not found: ${field.selector}');
-            el.focus();
-            el.click();
-            // Select all existing content so typing replaces it
-            if (el.select) el.select();
-            else if (el.setSelectionRange) el.setSelectionRange(0, el.value?.length || 0);
-          })()
-        `,
+            // Detect element type to choose fill strategy
+            const elInfo = await client.Runtime.evaluate({
+                expression: `(function() {
+          const el = document.querySelector(${JSON.stringify(field.selector)});
+          if (!el) return { found: false };
+          return {
+            found: true,
+            tag: el.tagName,
+            type: el.type || null,
+            contentEditable: el.isContentEditable || false,
+            maxLength: el.maxLength >= 0 ? el.maxLength : null
+          };
+        })()`,
                 returnByValue: true
             });
-            // Clear existing value with select-all + delete
-            await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2 }); // Ctrl+A / Cmd+A
-            await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 2 });
-            await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Backspace', code: 'Backspace' });
-            await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Backspace', code: 'Backspace' });
-            // Type each character via CDP Input.dispatchKeyEvent
-            for (const char of field.value) {
-                if (char === '\n') {
-                    // Newline: dispatch Enter key with proper key identifiers
-                    await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-                    await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-                }
-                else if (char === '\t') {
-                    // Tab: use insertText to avoid focus shift
-                    await client.Runtime.evaluate({ expression: `document.execCommand('insertText', false, '\\t')` });
-                }
-                else {
-                    await cdp.Input.dispatchKeyEvent({
-                        type: 'keyDown',
-                        key: char,
-                        text: char,
-                    });
-                    await cdp.Input.dispatchKeyEvent({
-                        type: 'keyUp',
-                        key: char,
-                    });
+            const info = elInfo.result.value;
+            if (!info || !info.found) {
+                results.push({ selector: field.selector, success: false, error: `Element not found: ${field.selector}` });
+                continue;
+            }
+            const isDateTimeRange = ['date', 'time', 'datetime-local', 'month', 'week', 'range', 'color'].includes(info.type);
+            const isContentEditable = info.contentEditable && info.tag !== 'INPUT' && info.tag !== 'TEXTAREA';
+            if (isDateTimeRange) {
+                // Date/time/range inputs: set value programmatically + dispatch events
+                await client.Runtime.evaluate({
+                    expression: `(function() {
+            const el = document.querySelector(${JSON.stringify(field.selector)});
+            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(el, ${JSON.stringify(field.value)});
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          })()`,
+                    returnByValue: true
+                });
+            }
+            else {
+                // Focus and clear
+                await client.Runtime.evaluate({
+                    expression: `
+            (function() {
+              const el = document.querySelector(${JSON.stringify(field.selector)});
+              el.focus();
+              el.click();
+              if (el.select) el.select();
+              else if (el.setSelectionRange) el.setSelectionRange(0, el.value?.length || 0);
+            })()
+          `,
+                    returnByValue: true
+                });
+                // Clear existing value with select-all + delete
+                await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2 });
+                await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 2 });
+                await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Backspace', code: 'Backspace' });
+                await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Backspace', code: 'Backspace' });
+                // Type each character via CDP Input.dispatchKeyEvent
+                for (const char of field.value) {
+                    if (char === '\n') {
+                        await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+                        await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+                    }
+                    else if (char === '\t') {
+                        await client.Runtime.evaluate({ expression: `document.execCommand('insertText', false, '\\t')` });
+                    }
+                    else {
+                        await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: char, text: char });
+                        await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: char });
+                    }
                 }
             }
-            // Verify the value was set
-            const verify = await client.Runtime.evaluate({
-                expression: `document.querySelector(${JSON.stringify(field.selector)})?.value`,
-                returnByValue: true
-            });
+            // Verify: use value for inputs, textContent for contenteditable
+            const verifyExpr = isContentEditable
+                ? `document.querySelector(${JSON.stringify(field.selector)})?.textContent?.trim()`
+                : `document.querySelector(${JSON.stringify(field.selector)})?.value`;
+            const verify = await client.Runtime.evaluate({ expression: verifyExpr, returnByValue: true });
             const actual = verify.result.value;
             if (actual === field.value) {
                 results.push({ selector: field.selector, success: true });
             }
             else if (actual === undefined || actual === null) {
                 results.push({ selector: field.selector, success: false, error: `Element not found or has no value: ${field.selector}` });
+            }
+            else if (info.maxLength && actual === field.value.substring(0, info.maxLength)) {
+                // Maxlength truncation — fill worked within constraint
+                results.push({ selector: field.selector, success: true, error: `Truncated to maxlength=${info.maxLength}` });
+            }
+            else if (isContentEditable && actual.includes(field.value)) {
+                results.push({ selector: field.selector, success: true });
             }
             else {
                 results.push({ selector: field.selector, success: false, error: `Value mismatch: expected "${field.value}", got "${actual}"` });
@@ -167,7 +200,7 @@ export async function clickElement(request, options) {
             el = bestMatch;
           }
           if (!el) return { success: false, error: 'Element not found' };
-          if (el.disabled) return { success: false, error: 'Element is disabled' };
+          if (el.disabled || el.getAttribute('aria-disabled') === 'true') return { success: false, error: 'Element is disabled' };
 
           el.scrollIntoView({ block: 'center' });
 
@@ -282,8 +315,16 @@ export async function navigatePage(request, options) {
             await new Promise(resolve => setTimeout(resolve, waitMs));
         }
         else if (request.url) {
+            // Block dangerous URL schemes
+            const scheme = request.url.trim().toLowerCase().split(':')[0];
+            if (['javascript', 'vbscript'].includes(scheme)) {
+                await client.close();
+                throw new Error('Blocked: javascript: URLs are not allowed');
+            }
             await client.Page.navigate({ url: request.url });
-            await client.Page.loadEventFired();
+            // Race loadEventFired against a timeout to prevent hanging on non-loading URLs
+            const loadTimeout = new Promise(resolve => setTimeout(resolve, Math.min(waitMs + 10000, 30000)));
+            await Promise.race([client.Page.loadEventFired(), loadTimeout]);
             await new Promise(resolve => setTimeout(resolve, waitMs));
         }
         const result = await client.Runtime.evaluate({
