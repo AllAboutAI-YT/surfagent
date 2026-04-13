@@ -82,6 +82,12 @@ curl -X POST localhost:3456/type -H 'Content-Type: application/json' -d '{"tab":
 # Captcha detection and interaction (experimental)
 curl -X POST localhost:3456/captcha -H 'Content-Type: application/json' -d '{"tab":"0","action":"detect"}'
 
+# Dispatch DOM events (React SPA workaround when /click or /fill submit fails)
+curl -X POST localhost:3456/dispatch -H 'Content-Type: application/json' -d '{"tab":"0","selector":"form[role=search]","event":"submit"}'
+
+# React debug — find event handlers on element ancestors
+curl -X POST localhost:3456/dispatch -H 'Content-Type: application/json' -d '{"tab":"0","selector":"[role=option]","reactDebug":true}'
+
 # List tabs
 curl localhost:3456/tabs
 

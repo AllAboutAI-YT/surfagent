@@ -82,6 +82,12 @@ curl -X POST localhost:3456/type -H 'Content-Type: application/json' -d '{"tab":
 # Captcha detection and interaction (experimental)
 curl -X POST localhost:3456/captcha -H 'Content-Type: application/json' -d '{"tab":"0","action":"detect"}'
 
+# Dispatch DOM events — for React SPAs where /click or /fill submit fails
+curl -X POST localhost:3456/dispatch -H 'Content-Type: application/json' -d '{"tab":"0","selector":"form[role=search]","event":"submit"}'
+
+# React debug — find event handlers on element and ancestors
+curl -X POST localhost:3456/dispatch -H 'Content-Type: application/json' -d '{"tab":"0","selector":"[role=option]","reactDebug":true}'
+
 # List tabs
 curl localhost:3456/tabs
 
@@ -154,7 +160,7 @@ surfagent start
     └── Starts API Server (:3456)
         │
         ├── src/api/recon.ts    (page reconnaissance)
-        ├── src/api/act.ts      (fill, click, scroll, read, navigate, eval, captcha)
+        ├── src/api/act.ts      (fill, click, scroll, read, navigate, eval, dispatch, captcha)
         └── src/api/server.ts   (HTTP routing)
              │
              └── src/chrome/    (CDP connection layer)
@@ -182,6 +188,12 @@ surfagent start
 **Form fields not filling**
 - Use the API `/fill` endpoint — it uses real CDP keystrokes
 - For SPAs, use `"submit": "enter"` instead of clicking submit buttons
+
+**React SPA — click/submit doesn't trigger navigation**
+- This happens when React event handlers are on ancestor elements, not the element you're clicking
+- Use `"submit": "form"` in `/fill` — dispatches a native submit event on the nearest `<form>`, which React picks up
+- For non-form cases, use `/dispatch` with `"reactDebug": true` to find which ancestor has the handler, then `/dispatch` the right event on it
+- Example (X.com search): `/fill` with `submit:"form"` works where `submit:"enter"` fails because the autocomplete combobox swallows the Enter key
 
 **Links opening new tabs instead of navigating**
 - The API `/click` handles `target="_blank"` automatically

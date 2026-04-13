@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http from 'node:http';
 import { reconUrl, reconTab } from './recon.js';
-import { fillFields, clickElement, scrollPage, navigatePage, evalInTab, focusTab, readPage, captchaInteract, dismissOverlays, typeKeys } from './act.js';
+import { fillFields, clickElement, scrollPage, navigatePage, evalInTab, focusTab, readPage, captchaInteract, dismissOverlays, typeKeys, dispatchEvent } from './act.js';
 import { getAllTabs } from '../chrome/tabs.js';
 const PORT = parseInt(process.env.API_PORT || '3456', 10);
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
@@ -150,6 +150,16 @@ const server = http.createServer(async (req, res) => {
             const result = await typeKeys(body.tab, body.keys, { port: CDP_PORT, host: CDP_HOST, submit: body.submit });
             return json(res, 200, result);
         }
+        // POST /dispatch — dispatch DOM events on elements (React SPA workaround)
+        if (path === '/dispatch' && req.method === 'POST') {
+            const body = parseBody(await readBody(req));
+            if (!body.tab || !body.selector || (!body.event && !body.reactDebug)) {
+                return json(res, 400, { error: 'Provide "tab", "selector", and "event" (e.g. "submit", "click"). Add "reactDebug":true to inspect React handlers instead.' });
+            }
+            const start = Date.now();
+            const result = await dispatchEvent(body, { port: CDP_PORT, host: CDP_HOST });
+            return json(res, 200, { ...result, _dispatchMs: Date.now() - start });
+        }
         // POST /navigate — go to url, back, or forward in same tab
         if (path === '/navigate' && req.method === 'POST') {
             const body = parseBody(await readBody(req));
@@ -180,7 +190,7 @@ const server = http.createServer(async (req, res) => {
                 return json(res, 503, { status: 'error', cdpConnected: false });
             }
         }
-        json(res, 404, { error: 'Not found. Endpoints: POST /recon, /read, /fill, /click, /type, /scroll, /navigate, /eval, /dismiss, /captcha, /focus | GET /tabs, /health' });
+        json(res, 404, { error: 'Not found. Endpoints: POST /recon, /read, /fill, /click, /type, /scroll, /navigate, /eval, /dispatch, /dismiss, /captcha, /focus | GET /tabs, /health' });
     }
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -212,6 +222,7 @@ server.listen(PORT, () => {
     console.log(`  POST /recon   — { url: "..." } or { tab: "0" }`);
     console.log(`  POST /fill    — { tab, fields: [{ selector, value }], submit? }`);
     console.log(`  POST /click   — { tab, selector? , text? }`);
+    console.log(`  POST /dispatch— { tab, selector, event, reactDebug? }`);
     console.log(`  GET  /tabs    — list open Chrome tabs`);
     console.log(`  GET  /health  — check CDP connection`);
 });

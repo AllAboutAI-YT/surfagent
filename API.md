@@ -324,6 +324,7 @@ Fill form fields using real CDP keyboard input. This simulates actual keystrokes
 
 **Submit options:**
 - `"enter"` — press Enter key via CDP. Best option for single-page apps (SPAs).
+- `"form"` — dispatch a native `submit` event on the nearest `<form>` ancestor. **Use this for React SPAs** where Enter is intercepted by autocomplete/combobox widgets (e.g. X.com search, GitHub search).
 - `"auto"` — finds and clicks the nearest `button[type="submit"]` or `input[type="submit"]`.
 - `"#my-button"` — clicks a specific selector.
 
@@ -444,6 +445,55 @@ Check if the API can connect to Chrome.
 ```json
 { "status": "ok", "cdpConnected": true, "tabCount": 3 }
 ```
+
+---
+
+### POST /dispatch
+
+Dispatch any DOM event on any element. Built to solve React/Vue/Angular SPAs where `.click()` and CDP key events don't trigger framework event handlers.
+
+**Dispatch an event:**
+```json
+{ "tab": "0", "selector": "form[role=search]", "event": "submit" }
+```
+
+**With options:**
+```json
+{ "tab": "0", "selector": "#my-input", "event": "keydown", "eventInit": { "key": "Enter", "code": "Enter" } }
+```
+
+**React debug mode** — find all React event handlers on an element and its ancestors:
+```json
+{ "tab": "0", "selector": "[role=option]", "reactDebug": true }
+```
+
+**Parameters:**
+- `selector` (string, required) — CSS selector for target element
+- `event` (string, required unless reactDebug) — Event type: `"submit"`, `"click"`, `"input"`, `"change"`, `"keydown"`, `"pointerdown"`, etc.
+- `bubbles` (boolean) — Default: `true`. Set to `false` to prevent event bubbling.
+- `cancelable` (boolean) — Default: `true`
+- `detail` (any) — Payload for CustomEvent
+- `eventInit` (object) — Extra properties merged into the event constructor (e.g. `{key: "Enter"}` for KeyboardEvent)
+- `reactDebug` (boolean) — Instead of dispatching, return all React event handlers found walking up the DOM tree from the selector
+
+**Event response:**
+```json
+{ "success": true, "dispatched": "submit on FORM[role=search]", "_dispatchMs": 25 }
+```
+
+**React debug response:**
+```json
+{
+  "success": true,
+  "reactHandlers": [
+    { "tag": "FORM", "role": "search", "testid": null, "className": "...", "handlers": ["onSubmit"] },
+    { "tag": "DIV", "role": null, "testid": null, "className": "...", "handlers": ["onKeyDown"] },
+    { "tag": "DIV", "role": null, "testid": null, "className": "...", "handlers": ["onClick"] }
+  ]
+}
+```
+
+**When to use:** When `/click` or `/fill` submit doesn't trigger navigation or actions on React SPAs. Use `reactDebug` first to find which ancestor has the handler, then dispatch the right event on it.
 
 ---
 
@@ -613,9 +663,32 @@ const CDP = require('chrome-remote-interface');
 
 **Using the menu search:** Google Sheets has a menu search box (`input[aria-label="Menus"]` or `input[aria-label="Menus (Option+/)"]`). Use `/fill` to type a command (e.g., "Insert chart"), then `/click` on the matching result.
 
+**Clearing/removing wrong cell entries:** You cannot send Delete or Backspace keys to Google Sheets via CDP — they don't reach the grid. Instead, overwrite the cell with a space:
+
+```
+1. POST /click    { "tab": "sheets", "selector": "#t-name-box" }
+2. POST /fill     { "tab": "sheets", "fields": [{ "selector": "#t-name-box", "value": "F1", "clear": true }], "submit": "enter" }
+   → Navigate to the cell you want to clear
+3. POST /type     { "tab": "sheets", "keys": " ", "submit": "enter" }
+   → Overwrite with a space (effectively blanks the cell)
+```
+
+Repeat for each cell. Do NOT try `Delete`, `Backspace`, or `Cmd+Z` via CDP key events — they are silently ignored by the Sheets grid. The `/type` space-overwrite is the only reliable method.
+
+**Avoiding wrong entries in the first place:** When entering rows of data, always navigate to the first cell of each new row via the name box. Pressing Enter after the last column does NOT return to column A — it moves down within the same column. So after completing a row with Tab across columns:
+
+```
+# Wrong: pressing Enter after last column stays in that column
+# Right: use name box to jump to start of next row
+POST /click  { "tab": "sheets", "selector": "#t-name-box" }
+POST /fill   { "tab": "sheets", "fields": [{ "selector": "#t-name-box", "value": "A3", "clear": true }], "submit": "enter" }
+```
+
 **Key gotchas:**
 - Never use `/fill` directly on Google Sheets cells — it will wipe data via Ctrl+A
 - Always navigate to a cell via the name box first, then `/type`
+- Always use the name box to navigate to the start of each new row — Tab+Enter does not wrap back to column A
+- CDP keyboard events (Delete, Backspace, Cmd+Z) do not work on the Sheets grid — use space-overwrite instead
 - Some buttons (Add Sheet, menu items) only respond to CDP mouse events, not DOM clicks
 - Navigating away from unsaved Sheets triggers a native Chrome dialog — see the "Native Chrome Dialogs" section below
 
@@ -755,6 +828,70 @@ if let windows = windowsRef as? [AXUIElement] {
 **Decision logic for agents:**
 - **Click "Leave"** if you intentionally navigated away and don't need the page anymore
 - **Click "Cancel"** if the navigation was accidental and you want to keep working on the current page (e.g., Google Sheets with unsaved data)
+
+---
+
+## React SPAs — When `/click` and `/fill` Submit Don't Work
+
+React, Vue, and Angular use synthetic event systems with event delegation. Sometimes `.click()` and CDP key events don't trigger framework handlers — especially on comboboxes, autocomplete widgets, and custom dropdowns.
+
+**Symptoms:**
+- `/click` returns `success: true` but nothing happens
+- `/fill` with `submit: "enter"` fills the input but doesn't navigate
+- CDP `Input.dispatchMouseEvent` / `Input.dispatchKeyEvent` are silently ignored
+
+**Diagnosis — use `/dispatch` with `reactDebug`:**
+
+```bash
+# Find which elements have React handlers and what events they listen for
+curl -X POST localhost:3456/dispatch -d '{"tab":"0","selector":"[role=option]","reactDebug":true}'
+```
+
+This walks up the DOM from your target element, inspecting `__reactProps$*` on each ancestor, and returns every React event handler it finds. The response tells you exactly which element to target and which event to dispatch.
+
+**Fix — dispatch the right event on the right element:**
+
+```bash
+# Dispatch a submit event on a form (most common fix for search boxes)
+curl -X POST localhost:3456/dispatch -d '{"tab":"0","selector":"form[role=search]","event":"submit"}'
+
+# Or dispatch a click on the ancestor that has the onClick handler
+curl -X POST localhost:3456/dispatch -d '{"tab":"0","selector":"div[data-testid=wrapper]","event":"click"}'
+```
+
+**Or use `/fill` with `submit: "form"` (one-step shortcut):**
+
+```bash
+curl -X POST localhost:3456/fill -d '{"tab":"0","fields":[{"selector":"input[aria-label=\"Search query\"]","value":"my query"}],"submit":"form"}'
+```
+
+### X.com (Twitter) Search — worked example
+
+X.com's search combobox is a textbook case. The `role="option"` autocomplete suggestions have **zero event handlers** — the `onClick` lives on a distant ancestor DIV, `onKeyDown` on a separate container, and `onSubmit` on the form.
+
+**What works:**
+```
+POST /fill  { "tab": "0", "fields": [{ "selector": "input[aria-label=\"Search query\"]", "value": "query" }], "submit": "form" }
+```
+
+**Fallback — URL navigation:**
+```
+POST /navigate  { "tab": "0", "url": "https://x.com/search?q=your%20query&src=typed_query&f=top" }
+```
+Query parameters: `q` (query), `f` (`top`, `latest`, `people`, `photos`, `videos`).
+
+### General debugging workflow for any React SPA
+
+```
+1. Try /click or /fill with submit:"enter" first — it works on most sites
+2. If it fails:
+   POST /dispatch  { "tab": "0", "selector": "THE_STUCK_ELEMENT", "reactDebug": true }
+   → Read the handler tree to find which ancestor has which handler
+3. Dispatch the right event:
+   POST /dispatch  { "tab": "0", "selector": "THE_ANCESTOR", "event": "THE_EVENT" }
+4. If it's a form with an input, use submit:"form" shortcut:
+   POST /fill      { "tab": "0", "fields": [...], "submit": "form" }
+```
 
 ---
 

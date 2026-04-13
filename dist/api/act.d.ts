@@ -99,3 +99,22 @@ export declare function typeKeys(tabPattern: string, keys: string, options: {
     typed: number;
     submitted?: boolean;
 }>;
+export interface DispatchRequest {
+    tab: string;
+    selector: string;
+    event: string;
+    bubbles?: boolean;
+    cancelable?: boolean;
+    detail?: any;
+    eventInit?: Record<string, any>;
+    reactDebug?: boolean;
+}
+export declare function dispatchEvent(request: DispatchRequest, options: {
+    port?: number;
+    host?: string;
+}): Promise<{
+    success: boolean;
+    dispatched?: string;
+    reactHandlers?: any[];
+    error?: string;
+}>;

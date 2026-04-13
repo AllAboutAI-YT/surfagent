@@ -142,6 +142,29 @@ export async function fillFields(request, options) {
                 await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
                 await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
             }
+            else if (request.submit === 'form') {
+                // Dispatch native submit event on nearest form — works on React SPAs where Enter is intercepted
+                // (e.g. X.com search combobox, autocomplete widgets that swallow Enter key)
+                await client.Runtime.evaluate({
+                    expression: `
+            (function() {
+              // Find the last filled field and its nearest form ancestor
+              const lastSelector = ${JSON.stringify(request.fields.length > 0 ? request.fields[request.fields.length - 1].selector : null)};
+              let form;
+              if (lastSelector) {
+                const field = document.querySelector(lastSelector);
+                form = field ? field.closest('form') : null;
+              }
+              if (!form) {
+                form = document.querySelector('form');
+              }
+              if (!form) throw new Error('No form found');
+              form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            })()
+          `,
+                    returnByValue: true
+                });
+            }
             else {
                 const submitSelector = request.submit === 'auto'
                     ? 'button[type="submit"], input[type="submit"]'
@@ -701,6 +724,83 @@ export async function typeKeys(tabPattern, keys, options) {
         }
         await client.close();
         return { typed: keys.length, submitted };
+    }
+    catch (error) {
+        await client.close();
+        throw error;
+    }
+}
+export async function dispatchEvent(request, options) {
+    const port = options.port || 9222;
+    const host = options.host || 'localhost';
+    const tab = await resolveTab(request.tab, port, host);
+    const client = await connectToTab(tab.id, port, host);
+    try {
+        const result = await client.Runtime.evaluate({
+            expression: `
+        (function() {
+          const selector = ${JSON.stringify(request.selector)};
+          const eventType = ${JSON.stringify(request.event)};
+          const bubbles = ${request.bubbles !== false};
+          const cancelable = ${request.cancelable !== false};
+          const detail = ${JSON.stringify(request.detail || null)};
+          const extraInit = ${JSON.stringify(request.eventInit || {})};
+          const reactDebug = ${JSON.stringify(!!request.reactDebug)};
+
+          const el = document.querySelector(selector);
+          if (!el) return { success: false, error: 'Element not found: ' + selector };
+
+          // React debug: walk up tree and find all React event handlers
+          if (reactDebug) {
+            const handlers = [];
+            let current = el;
+            while (current && current !== document.documentElement) {
+              const propsKey = Object.keys(current).find(k => k.startsWith('__reactProps'));
+              if (propsKey) {
+                const props = current[propsKey] || {};
+                const reactHandlers = Object.keys(props).filter(k => typeof props[k] === 'function' && k.startsWith('on'));
+                if (reactHandlers.length > 0) {
+                  handlers.push({
+                    tag: current.tagName,
+                    role: current.getAttribute('role'),
+                    testid: current.getAttribute('data-testid'),
+                    className: (current.className || '').toString().substring(0, 60),
+                    handlers: reactHandlers
+                  });
+                }
+              }
+              current = current.parentElement;
+            }
+            return { success: true, reactHandlers: handlers };
+          }
+
+          // Build the event object
+          let event;
+          const init = { bubbles, cancelable, ...extraInit };
+
+          // Use specific event constructors for better compatibility
+          if (eventType === 'click' || eventType === 'mousedown' || eventType === 'mouseup' || eventType === 'dblclick') {
+            event = new MouseEvent(eventType, init);
+          } else if (eventType === 'keydown' || eventType === 'keyup' || eventType === 'keypress') {
+            event = new KeyboardEvent(eventType, init);
+          } else if (eventType === 'input' || eventType === 'change') {
+            event = new Event(eventType, init);
+          } else if (eventType === 'pointerdown' || eventType === 'pointerup' || eventType === 'pointermove') {
+            event = new PointerEvent(eventType, init);
+          } else if (detail !== null) {
+            event = new CustomEvent(eventType, { ...init, detail });
+          } else {
+            event = new Event(eventType, init);
+          }
+
+          el.dispatchEvent(event);
+          return { success: true, dispatched: eventType + ' on ' + el.tagName + (el.getAttribute('role') ? '[role=' + el.getAttribute('role') + ']' : '') };
+        })()
+      `,
+            returnByValue: true
+        });
+        await client.close();
+        return result.result.value;
     }
     catch (error) {
         await client.close();
