@@ -76,6 +76,9 @@ curl -X POST localhost:3456/eval -H 'Content-Type: application/json' -d '{"tab":
 # Bring tab to front
 curl -X POST localhost:3456/focus -H 'Content-Type: application/json' -d '{"tab":"0"}'
 
+# Raw key typing — no clear step, for Google Sheets / contenteditable / canvas
+curl -X POST localhost:3456/type -H 'Content-Type: application/json' -d '{"tab":"0","keys":"Hello","submit":"tab"}'
+
 # Captcha detection and interaction (experimental)
 curl -X POST localhost:3456/captcha -H 'Content-Type: application/json' -d '{"tab":"0","action":"detect"}'
 
@@ -85,6 +88,25 @@ curl localhost:3456/tabs
 # Health check
 curl localhost:3456/health
 ```
+
+### Google Sheets
+
+Google Sheets requires `/type` instead of `/fill` for cell input (because `/fill` does Ctrl+A which selects all cells). Use the name box to navigate, then `/type` to enter data:
+
+```bash
+# 1. Click the name box
+curl -X POST localhost:3456/click -H 'Content-Type: application/json' -d '{"tab":"sheets","selector":"#t-name-box"}'
+
+# 2. Navigate to a cell
+curl -X POST localhost:3456/fill -H 'Content-Type: application/json' -d '{"tab":"sheets","fields":[{"selector":"#t-name-box","value":"A1","clear":true}],"submit":"enter"}'
+
+# 3. Type into the cell (Tab moves right, Enter moves down)
+curl -X POST localhost:3456/type -H 'Content-Type: application/json' -d '{"tab":"sheets","keys":"=SUM(B2:B10)","submit":"tab"}'
+```
+
+Some Sheets buttons (Add Sheet +, toolbar) only respond to CDP mouse events, not DOM clicks. See `API.md` for the CDP mouse click pattern.
+
+**Warning:** Navigating away from unsaved Sheets triggers a native Chrome "Leave page?" dialog that blocks ALL CDP commands. See `API.md` > "Native Chrome Dialogs" for detection and dismissal via Swift AX API.
 
 ### Tab Targeting
 

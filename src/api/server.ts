@@ -2,7 +2,7 @@
 
 import http from 'node:http';
 import { reconUrl, reconTab } from './recon.js';
-import { fillFields, clickElement, scrollPage, navigatePage, evalInTab, focusTab, readPage, captchaInteract, dismissOverlays } from './act.js';
+import { fillFields, clickElement, scrollPage, navigatePage, evalInTab, focusTab, readPage, captchaInteract, dismissOverlays, typeKeys } from './act.js';
 import { getAllTabs } from '../chrome/tabs.js';
 
 const PORT = parseInt(process.env.API_PORT || '3456', 10);
@@ -160,7 +160,20 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { error: 'Provide "tab" and "expression"' });
       }
       const result = await evalInTab(body.tab, body.expression, { port: CDP_PORT, host: CDP_HOST });
+      if (result && result.__error) {
+        return json(res, 200, { result: null, error: result.__error });
+      }
       return json(res, 200, { result });
+    }
+
+    // POST /type — raw CDP key typing, no clear step (for Google Sheets, contenteditable, etc.)
+    if (path === '/type' && req.method === 'POST') {
+      const body = parseBody(await readBody(req));
+      if (!body.tab || !body.keys) {
+        return json(res, 400, { error: 'Provide "tab" and "keys" (string to type), optional "submit": "enter"|"tab"' });
+      }
+      const result = await typeKeys(body.tab, body.keys, { port: CDP_PORT, host: CDP_HOST, submit: body.submit });
+      return json(res, 200, result);
     }
 
     // POST /navigate — go to url, back, or forward in same tab
@@ -168,6 +181,12 @@ const server = http.createServer(async (req, res) => {
       const body = parseBody(await readBody(req));
       if (!body.tab) {
         return json(res, 400, { error: 'Provide "tab" and one of: "url", "back":true, "forward":true' });
+      }
+      if (!body.url && !body.back && !body.forward) {
+        return json(res, 400, { error: 'Provide one of: "url", "back":true, "forward":true' });
+      }
+      if ((body.url && body.back) || (body.url && body.forward) || (body.back && body.forward)) {
+        return json(res, 400, { error: 'Provide only one of: "url", "back", "forward"' });
       }
       const result = await navigatePage(body, { port: CDP_PORT, host: CDP_HOST });
       return json(res, 200, result);

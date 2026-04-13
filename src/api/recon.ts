@@ -25,7 +25,9 @@ export interface ReconResult {
     role: string | null;
     x: number;
     y: number;
+    data?: Record<string, string>;
   }[];
+  totalElements: number;
   forms: {
     action: string | null;
     method: string | null;
@@ -77,7 +79,14 @@ const EXTRACTION_SCRIPT = `
     const tag = el.tagName.toLowerCase();
     if (el.getAttribute('aria-label')) return tag + '[aria-label="' + el.getAttribute('aria-label') + '"]';
     if (el.getAttribute('data-testid')) return '[data-testid="' + el.getAttribute('data-testid') + '"]';
-    if (el.getAttribute('name')) return tag + '[name="' + el.getAttribute('name') + '"]';
+    if (el.getAttribute('name')) {
+      const nameSelector = tag + '[name="' + el.getAttribute('name') + '"]';
+      // Disambiguate radio/checkbox with same name by adding value
+      if ((el.type === 'radio' || el.type === 'checkbox') && el.value) {
+        return nameSelector + '[value="' + el.value + '"]';
+      }
+      return nameSelector;
+    }
     // Positional fallback
     const parent = el.parentElement;
     if (!parent) return tag;
@@ -153,7 +162,12 @@ const EXTRACTION_SCRIPT = `
         selector: buildSelector(el),
         role: el.getAttribute('role'),
         x: Math.round(rect.x),
-        y: Math.round(rect.y)
+        y: Math.round(rect.y),
+        ...(el.dataset && Object.keys(el.dataset).length > 0 ? {
+          data: Object.fromEntries(
+            ['date','iso','value','testid','id'].filter(k => el.dataset[k]).map(k => [k, el.dataset[k]])
+          )
+        } : {})
       });
     }
   }
@@ -255,6 +269,16 @@ const EXTRACTION_SCRIPT = `
       }
     }
   }
+  // Deduplicate: remove overlays that are descendants of other overlays
+  const deduped = overlays.filter((o, i) => {
+    const el = document.querySelector(o.selector);
+    if (!el) return true;
+    return !overlays.some((other, j) => {
+      if (i === j) return false;
+      const otherEl = document.querySelector(other.selector);
+      return otherEl && otherEl !== el && otherEl.contains(el);
+    });
+  });
 
   // ---- Captcha detection ----
   const captchas = [];
@@ -285,9 +309,10 @@ const EXTRACTION_SCRIPT = `
     headings,
     navigation: navigation.slice(0, 50),
     elements: elements.slice(0, 150),
+    totalElements: elements.length,
     forms,
     landmarks,
-    overlays,
+    overlays: deduped,
     captchas,
     contentSummary
   };
@@ -352,6 +377,7 @@ export async function reconUrl(
       headings: data.headings,
       navigation: data.navigation,
       elements: data.elements,
+      totalElements: data.totalElements || data.elements?.length || 0,
       forms: data.forms,
       contentSummary: data.contentSummary,
       landmarks: data.landmarks,
@@ -414,6 +440,7 @@ export async function reconTab(
       headings: data.headings,
       navigation: data.navigation,
       elements: data.elements,
+      totalElements: data.totalElements || data.elements?.length || 0,
       forms: data.forms,
       contentSummary: data.contentSummary,
       landmarks: data.landmarks,

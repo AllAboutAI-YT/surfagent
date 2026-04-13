@@ -91,3 +91,11 @@ export declare function focusTab(tabPattern: string, options: {
     title: string;
     url: string;
 }>;
+export declare function typeKeys(tabPattern: string, keys: string, options: {
+    port?: number;
+    host?: string;
+    submit?: string;
+}): Promise<{
+    typed: number;
+    submitted?: boolean;
+}>;

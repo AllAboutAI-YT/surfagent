@@ -447,6 +447,27 @@ Check if the API can connect to Chrome.
 
 ---
 
+### POST /type
+
+Raw CDP key typing without clearing the field first. Use this for apps like **Google Sheets**, contenteditable elements, or any context where `/fill`'s Ctrl+A clear step causes side effects (e.g., selecting all cells instead of clearing a field).
+
+**Request:**
+```json
+{ "tab": "0", "keys": "Hello World", "submit": "tab" }
+```
+
+- `keys` (string) — characters to type via CDP `Input.dispatchKeyEvent`
+- `submit` (optional) — `"enter"` or `"tab"` to press after typing
+
+**Response:**
+```json
+{ "typed": 11, "submitted": true }
+```
+
+**Why not `/fill`?** The `/fill` endpoint focuses an element, does Ctrl+A + Backspace to clear it, then types. In Google Sheets, Ctrl+A selects all cells (not text in the current cell), wiping the entire sheet. `/type` skips the focus and clear — it types into whatever currently has focus.
+
+---
+
 ## Tab Targeting
 
 All POST endpoints accept a `tab` field. It resolves in this order:
@@ -547,6 +568,193 @@ POST /read  { "tab": "0", "selector": "#main-content" }
 4. POST /click    { "tab": "iframe-domain.com", "selector": "#submit" }
    → Click inside the iframe
 ```
+
+### Google Sheets workflow
+
+Google Sheets requires a special approach because `/fill` uses Ctrl+A to clear fields, which selects all cells in Sheets. Use the **name box + `/type`** pattern instead.
+
+**Navigate to a cell:** Use `/fill` on the name box (`#t-name-box`), then Enter to jump to the cell.
+
+**Type into a cell:** Use `/type` with `"submit": "tab"` (moves to next cell) or `"submit": "enter"` (moves down).
+
+```
+1. POST /click    { "tab": "sheets", "selector": "#t-name-box" }
+   → Focus the name box
+2. POST /fill     { "tab": "sheets", "fields": [{ "selector": "#t-name-box", "value": "A1", "clear": true }], "submit": "enter" }
+   → Navigate to cell A1
+3. POST /type     { "tab": "sheets", "keys": "Hello World", "submit": "tab" }
+   → Type into A1, Tab moves to B1
+4. POST /type     { "tab": "sheets", "keys": "=SUM(A1:A10)", "submit": "enter" }
+   → Type a formula, Enter commits and moves down
+```
+
+**Adding a new sheet tab:** The "+" button at the bottom does not respond to DOM `.click()`. Use CDP `Input.dispatchMouseEvent` at the button's coordinates:
+
+```bash
+# Get the Add Sheet button position
+curl -s -X POST localhost:3456/eval -d '{"tab":"0","expression":"var els = document.querySelectorAll(\"div[data-tooltip]\"); var r = \"\"; for(var i=0;i<els.length;i++){if(els[i].dataset.tooltip===\"Add Sheet\"){var b=els[i].getBoundingClientRect(); r=b.x+\",\"+b.y+\",\"+b.width+\",\"+b.height}} r"}'
+# Returns: "44,854,34,34"
+
+# Click it with a Node script using CDP mouse events
+node -e "
+const CDP = require('chrome-remote-interface');
+(async () => {
+  const targets = await CDP.List({port: 9222});
+  const tab = targets.find(t => t.url.includes('docs.google.com'));
+  const client = await CDP({target: tab, port: 9222});
+  await client.Input.dispatchMouseEvent({type:'mousePressed', x:61, y:871, button:'left', clickCount:1});
+  await client.Input.dispatchMouseEvent({type:'mouseReleased', x:61, y:871, button:'left', clickCount:1});
+  await client.close();
+})();
+"
+```
+
+**Renaming a sheet tab:** Double-click the tab name via CDP mouse events at the tab's coordinates, then use `/type` to enter the new name and press Enter.
+
+**Using the menu search:** Google Sheets has a menu search box (`input[aria-label="Menus"]` or `input[aria-label="Menus (Option+/)"]`). Use `/fill` to type a command (e.g., "Insert chart"), then `/click` on the matching result.
+
+**Key gotchas:**
+- Never use `/fill` directly on Google Sheets cells — it will wipe data via Ctrl+A
+- Always navigate to a cell via the name box first, then `/type`
+- Some buttons (Add Sheet, menu items) only respond to CDP mouse events, not DOM clicks
+- Navigating away from unsaved Sheets triggers a native Chrome dialog — see the "Native Chrome Dialogs" section below
+
+### CDP mouse clicks for unreachable elements
+
+Some UI elements don't respond to JavaScript `.click()` or the `/click` endpoint — they only react to real mouse events at their coordinates. This is common for:
+- Google Sheets buttons (Add Sheet, toolbar items)
+- Canvas-rendered elements
+- Custom widgets that listen for `mousedown`/`mouseup` events
+
+**Pattern:**
+```bash
+# 1. Get the element's coordinates via /eval
+curl -s -X POST localhost:3456/eval -d '{"tab":"0","expression":"document.querySelector(\"#my-button\").getBoundingClientRect().x"}'
+# → {"result": 100}
+
+# 2. Click via CDP Input.dispatchMouseEvent (requires a Node script)
+node -e "
+const CDP = require('chrome-remote-interface');
+(async () => {
+  const targets = await CDP.List({port: 9222});
+  const tab = targets.find(t => t.url.includes('your-site'));
+  const client = await CDP({target: tab, port: 9222});
+  await client.Input.dispatchMouseEvent({type:'mousePressed', x:100, y:200, button:'left', clickCount:1});
+  await client.Input.dispatchMouseEvent({type:'mouseReleased', x:100, y:200, button:'left', clickCount:1});
+  await client.close();
+})();
+"
+```
+
+**Double-click** (e.g., to rename a Google Sheets tab): use `clickCount: 2`.
+
+---
+
+## Native Chrome Dialogs (Not in DOM or CDP)
+
+Chrome can show browser-level popups — like "Leave page?" (`beforeunload`) dialogs — that are **not in the DOM**, **not accessible via CDP**, and will **block all CDP commands** (`/eval`, `/recon`, `/read` will all hang or timeout).
+
+**Symptoms of a stuck session:**
+- API calls hang or timeout on a tab that was previously working
+- `Page.handleJavaScriptDialog` returns "No dialog is showing" (because it's not a JS dialog — it's a native Chrome window)
+- The agent appears frozen on a page
+
+**How to detect it (macOS only):**
+
+Use CoreGraphics to list windows belonging to the surfagent Chrome process. Native dialogs appear as small unnamed windows (~260x218px) that are not visible to CDP.
+
+```bash
+# 1. Find the surfagent Chrome PID
+SURFAGENT_PID=$(ps aux | grep 'chrome.*surfagent' | grep -v grep | awk '{print $2}')
+
+# 2. List all windows for that PID using CoreGraphics
+swift -e "
+import CoreGraphics
+let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as! [[String: Any]]
+for w in windows {
+    let pid = w[\"kCGWindowOwnerPID\"] as? Int ?? 0
+    if pid == ${SURFAGENT_PID} {
+        let name = w[\"kCGWindowName\"] as? String ?? \"(unnamed)\"
+        let bounds = w[\"kCGWindowBounds\"] as? [String: Any] ?? [:]
+        let width = bounds[\"Width\"] as? Int ?? 0
+        let height = bounds[\"Height\"] as? Int ?? 0
+        if width > 100 && height > 100 {
+            print(\"Window: \(name) | Size: \(width)x\(height)\")
+        }
+    }
+}
+"
+```
+
+**What to look for:** A small unnamed window (typically ~260x218) alongside the main browser window. That's the native dialog.
+
+**How to dismiss it:**
+
+Native Chrome dialogs cannot be dismissed via CDP or AppleScript's `tell process "Google Chrome"` (which only sees the personal Chrome, not the surfagent debug instance). You must use the **Swift Accessibility API targeting the surfagent PID directly**.
+
+```bash
+# Find the surfagent Chrome PID
+SURFAGENT_PID=$(ps aux | grep 'chrome.*surfagent' | grep -v grep | awk '{print $2}')
+
+# Click "Cancel" (stay on page) — or change "Avbryt"/"Cancel" to "Leave"/"Gå ut" to leave
+swift -e "
+import Cocoa
+
+let pid: pid_t = ${SURFAGENT_PID}
+let app = AXUIElementCreateApplication(pid)
+
+var windowsRef: CFTypeRef?
+AXUIElementCopyAttributeValue(app, \"AXWindows\" as CFString, &windowsRef)
+
+if let windows = windowsRef as? [AXUIElement] {
+    for win in windows {
+        var subroleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(win, \"AXSubrole\" as CFString, &subroleRef)
+        let subrole = subroleRef as? String ?? \"\"
+        
+        // Native dialogs have subrole AXDialog
+        if subrole == \"AXDialog\" {
+            var childrenRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(win, \"AXChildren\" as CFString, &childrenRef)
+            if let children = childrenRef as? [AXUIElement] {
+                for child in children {
+                    var roleRef: CFTypeRef?
+                    AXUIElementCopyAttributeValue(child, \"AXRole\" as CFString, &roleRef)
+                    var titleRef: CFTypeRef?
+                    AXUIElementCopyAttributeValue(child, \"AXTitle\" as CFString, &titleRef)
+                    let role = roleRef as? String ?? \"\"
+                    let title = titleRef as? String ?? \"\"
+                    
+                    // Match button by title — handles multiple languages
+                    // Cancel/Stay: \"Cancel\", \"Avbryt\" (Norwegian)
+                    // Leave: \"Leave\", \"Gå ut\" (Norwegian)
+                    let cancelNames = [\"Cancel\", \"Avbryt\"]
+                    let leaveNames = [\"Leave\", \"Gå ut\"]
+                    
+                    let targetNames = cancelNames  // Change to leaveNames to leave
+                    
+                    if role == \"AXButton\" && targetNames.contains(title) {
+                        let result = AXUIElementPerformAction(child, \"AXPress\" as CFString)
+                        print(\"Clicked \(title): \(result == .success ? \"SUCCESS\" : \"FAILED\")\")
+                    }
+                }
+            }
+        }
+    }
+}
+"
+```
+
+**Why AppleScript doesn't work:** `tell process "Google Chrome"` sees all Chrome instances as one process, but only exposes the *personal* Chrome's windows. The surfagent Chrome (launched with `--user-data-dir=/tmp/surfagent-chrome`) is invisible to it. The Swift `AXUIElementCreateApplication(pid)` approach targets the exact process by PID, which is the only way to reach the surfagent Chrome's native dialogs.
+
+**When to check:** If any API call hangs or times out unexpectedly on a tab that was previously responsive, check for a native dialog before retrying. Common triggers:
+- Navigating away from pages with unsaved changes (Google Sheets, web editors, forms)
+- `window.onbeforeunload` handlers
+- Chrome permission prompts
+
+**Decision logic for agents:**
+- **Click "Leave"** if you intentionally navigated away and don't need the page anymore
+- **Click "Cancel"** if the navigation was accidental and you want to keep working on the current page (e.g., Google Sheets with unsaved data)
 
 ---
 

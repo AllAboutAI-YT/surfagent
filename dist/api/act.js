@@ -59,15 +59,26 @@ export async function fillFields(request, options) {
             await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Backspace', code: 'Backspace' });
             // Type each character via CDP Input.dispatchKeyEvent
             for (const char of field.value) {
-                await cdp.Input.dispatchKeyEvent({
-                    type: 'keyDown',
-                    key: char,
-                    text: char,
-                });
-                await cdp.Input.dispatchKeyEvent({
-                    type: 'keyUp',
-                    key: char,
-                });
+                if (char === '\n') {
+                    // Newline: dispatch Enter key with proper key identifiers
+                    await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+                    await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+                }
+                else if (char === '\t') {
+                    // Tab: use insertText to avoid focus shift
+                    await client.Runtime.evaluate({ expression: `document.execCommand('insertText', false, '\\t')` });
+                }
+                else {
+                    await cdp.Input.dispatchKeyEvent({
+                        type: 'keyDown',
+                        key: char,
+                        text: char,
+                    });
+                    await cdp.Input.dispatchKeyEvent({
+                        type: 'keyUp',
+                        key: char,
+                    });
+                }
             }
             // Verify the value was set
             const verify = await client.Runtime.evaluate({
@@ -138,13 +149,25 @@ export async function clickElement(request, options) {
           }
           if (!el && text) {
             const lower = text.toLowerCase();
-            const all = document.querySelectorAll('a, button, input[type="submit"], [role="button"], [role="option"], [role="menuitem"], [role="listitem"], [role="tab"], [role="link"], li[aria-label], [onclick]');
+            const all = document.querySelectorAll('a, button, input[type="submit"], [role="button"], [role="option"], [role="menuitem"], [role="listitem"], [role="tab"], [role="link"], li[aria-label], [onclick], label');
+            let bestMatch = null;
+            let bestScore = Infinity; // lower is better
             for (const candidate of all) {
               const t = (candidate.innerText || candidate.textContent || candidate.value || candidate.getAttribute('aria-label') || '').trim();
-              if (t.toLowerCase().includes(lower)) { el = candidate; break; }
+              const tLower = t.toLowerCase();
+              if (!tLower.includes(lower)) continue;
+              // Score: 0 = exact, 1 = starts-with, 2+ = contains (shorter text = better)
+              let score;
+              if (tLower === lower) score = 0;
+              else if (tLower.startsWith(lower)) score = 1;
+              else score = 2 + t.length;
+              if (score < bestScore) { bestMatch = candidate; bestScore = score; }
+              if (score === 0) break; // exact match, stop
             }
+            el = bestMatch;
           }
           if (!el) return { success: false, error: 'Element not found' };
+          if (el.disabled) return { success: false, error: 'Element is disabled' };
 
           el.scrollIntoView({ block: 'center' });
 
@@ -192,17 +215,39 @@ export async function scrollPage(request, options) {
           const scrollY = Math.round(window.scrollY);
           const scrollHeight = document.documentElement.scrollHeight;
           const viewportHeight = window.innerHeight;
-          const atBottom = (scrollY + viewportHeight) >= (scrollHeight - 10);
+          const atBottom = (scrollY + viewportHeight) >= (scrollHeight - 2);
 
-          // Get visible text content
-          const centerY = scrollY + viewportHeight / 2;
-          const elements = document.elementsFromPoint(window.innerWidth / 2, viewportHeight / 2);
+          // Get visible text content from elements in the current viewport
           let contentPreview = '';
-          for (const el of elements) {
+          const visibleTexts = [];
+          const mainEl = document.querySelector('main, article, [role="main"]') || document.body;
+          const allEls = mainEl.querySelectorAll('p, li, td, th, h1, h2, h3, h4, h5, h6, dd, dt, blockquote, pre');
+          for (const el of allEls) {
+            if (visibleTexts.length >= 30) break;
+            const rect = el.getBoundingClientRect();
+            // Element must be within the viewport
+            if (rect.bottom < 0 || rect.top > viewportHeight || rect.height === 0) continue;
+            // Skip fixed/sticky elements (nav, TOC, sidebars)
+            const style = window.getComputedStyle(el.closest('nav, aside, [role="navigation"]') || el);
+            if (style.position === 'fixed' || style.position === 'sticky') continue;
             const text = el.innerText?.trim();
-            if (text && text.length > 50) {
-              contentPreview = text.substring(0, 1500);
-              break;
+            if (!text || text.length < 5) continue;
+            // Skip if text is too long (likely a parent container)
+            if (text.length > 500) continue;
+            // Skip duplicates
+            if (visibleTexts.some(t => t.includes(text) || text.includes(t))) continue;
+            visibleTexts.push(text);
+          }
+          contentPreview = visibleTexts.join('\\n').substring(0, 1500);
+          if (!contentPreview) {
+            // Fallback: grab from center point
+            const elements = document.elementsFromPoint(window.innerWidth / 2, viewportHeight / 2);
+            for (const el of elements) {
+              const text = el.innerText?.trim();
+              if (text && text.length > 50 && text.length < 3000) {
+                contentPreview = text.substring(0, 1500);
+                break;
+              }
             }
           }
 
@@ -262,9 +307,18 @@ export async function evalInTab(tab, expression, options) {
         const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Eval timed out after 30s')), 30000));
         const evalPromise = client.Runtime.evaluate({
             expression,
-            returnByValue: true
+            returnByValue: true,
+            awaitPromise: true
         });
         const result = await Promise.race([evalPromise, timeout]);
+        // Check for exceptions (syntax errors, thrown errors, etc.)
+        if (result.exceptionDetails) {
+            const desc = result.exceptionDetails.exception?.description
+                || result.exceptionDetails.text
+                || 'Unknown error';
+            await client.close();
+            return { __error: desc };
+        }
         await client.close();
         return result.result.value ?? null;
     }
@@ -573,6 +627,39 @@ export async function focusTab(tabPattern, options) {
         await client.Page.bringToFront();
         await client.close();
         return { id: tab.id, title: tab.title, url: tab.url };
+    }
+    catch (error) {
+        await client.close();
+        throw error;
+    }
+}
+// Raw CDP key typing — no clear step, no element focus. Types directly into whatever has focus.
+// Designed for apps like Google Sheets where Ctrl+A/Backspace clear causes side effects.
+export async function typeKeys(tabPattern, keys, options) {
+    const port = options.port || 9222;
+    const host = options.host || 'localhost';
+    const tab = await resolveTab(tabPattern, port, host);
+    const client = await connectToTab(tab.id, port, host);
+    const cdp = client;
+    try {
+        // Type each character via CDP Input.dispatchKeyEvent
+        for (const char of keys) {
+            await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: char, text: char });
+            await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: char });
+        }
+        let submitted = false;
+        if (options.submit === 'enter') {
+            await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+            await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+            submitted = true;
+        }
+        else if (options.submit === 'tab') {
+            await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+            await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+            submitted = true;
+        }
+        await client.close();
+        return { typed: keys.length, submitted };
     }
     catch (error) {
         await client.close();

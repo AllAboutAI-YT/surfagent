@@ -28,7 +28,9 @@ export interface ReconResult {
         role: string | null;
         x: number;
         y: number;
+        data?: Record<string, string>;
     }[];
+    totalElements: number;
     forms: {
         action: string | null;
         method: string | null;

@@ -74,6 +74,7 @@ curl -X POST localhost:3456/read -H 'Content-Type: application/json' \
 | `/navigate` | POST | Go to URL, back, or forward in the same tab |
 | `/eval` | POST | Run JavaScript in any tab or cross-origin iframe |
 | `/captcha` | POST | Detect and interact with captchas — Arkose, reCAPTCHA, hCaptcha (experimental) |
+| `/type` | POST | Raw CDP key typing without clearing — for Google Sheets, contenteditable, canvas apps |
 | `/focus` | POST | Bring a tab to the front in Chrome |
 | `/tabs` | GET | List all open Chrome tabs |
 | `/health` | GET | Check if Chrome and API are connected |
