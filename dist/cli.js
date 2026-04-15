@@ -28,6 +28,12 @@ function detectOS() {
     return 'linux';
 }
 function getChromePath() {
+    if (process.env.BROWSER_PATH) {
+        if (fs.existsSync(process.env.BROWSER_PATH))
+            return process.env.BROWSER_PATH;
+        console.error(`[surfagent] BROWSER_PATH set but not found: ${process.env.BROWSER_PATH}`);
+        return null;
+    }
     const os = detectOS();
     const paths = {
         mac: [
@@ -118,6 +124,7 @@ Usage:
 Environment variables:
   CDP_PORT            Chrome debug port (default: 9222)
   API_PORT            API server port (default: 3456)
+  BROWSER_PATH          Path to any Chromium-based browser (Arc, Brave, Edge, etc.)
   CHROME_USER_DATA_DIR  Chrome profile directory (default: /tmp/surfagent-chrome)
 
 After starting, your AI agent can call http://localhost:3456
@@ -148,7 +155,7 @@ Full API docs: https://github.com/AllAboutAI-YT/surfagent#readme
         }
         const chromePath = getChromePath();
         if (!chromePath) {
-            console.error('[surfagent] Chrome not found. Install Google Chrome and try again.');
+            console.error('[surfagent] Chrome not found. Install Google Chrome or set BROWSER_PATH to a Chromium-based browser.');
             process.exit(1);
         }
         startChrome(chromePath);
@@ -179,7 +186,7 @@ Full API docs: https://github.com/AllAboutAI-YT/surfagent#readme
         else {
             const chromePath = getChromePath();
             if (!chromePath) {
-                console.error('[surfagent] Chrome not found. Install Google Chrome and try again.');
+                console.error('[surfagent] Chrome not found. Install Google Chrome or set BROWSER_PATH to a Chromium-based browser.');
                 process.exit(1);
             }
             startChrome(chromePath);
