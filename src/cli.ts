@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 const API_PORT = parseInt(process.env.API_PORT || '3456', 10);
+const CDP_HOST = process.env.CDP_HOST || 'localhost';
+const API_HOST = process.env.API_HOST || 'localhost';
 
 function log(msg: string) {
   console.log(`[surfagent] ${msg}`);
@@ -16,11 +18,31 @@ function log(msg: string) {
 
 function checkCDP(): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(`http://localhost:${CDP_PORT}/json/version`, (res) => {
-      resolve(res.statusCode === 200);
-    });
-    req.on('error', () => resolve(false));
-    req.setTimeout(1000, () => { req.destroy(); resolve(false); });
+    const hosts = Array.from(new Set([CDP_HOST, 'localhost', '127.0.0.1', '::1']));
+    let idx = 0;
+
+    const tryNext = () => {
+      if (idx >= hosts.length) {
+        resolve(false);
+        return;
+      }
+
+      const host = hosts[idx++];
+      const req = http.get(`http://${host}:${CDP_PORT}/json/version`, (res) => {
+        if (res.statusCode === 200) {
+          resolve(true);
+        } else {
+          tryNext();
+        }
+      });
+      req.on('error', () => tryNext());
+      req.setTimeout(1000, () => {
+        req.destroy();
+        tryNext();
+      });
+    };
+
+    tryNext();
   });
 }
 
@@ -129,7 +151,7 @@ Environment variables:
   API_PORT            API server port (default: 3456)
   CHROME_USER_DATA_DIR  Chrome profile directory (default: /tmp/surfagent-chrome)
 
-After starting, your AI agent can call http://localhost:3456
+After starting, your AI agent can call http://${API_HOST}:${API_PORT}
 Full API docs: https://github.com/AllAboutAI-YT/surfagent#readme
 `);
     return;
@@ -140,7 +162,7 @@ Full API docs: https://github.com/AllAboutAI-YT/surfagent#readme
     console.log(`Chrome CDP (port ${CDP_PORT}): ${cdp ? 'connected' : 'not running'}`);
     if (cdp) {
       try {
-        const res = await fetch(`http://localhost:${API_PORT}/health`);
+        const res = await fetch(`http://${API_HOST}:${API_PORT}/health`);
         const data = await res.json();
         console.log(`API (port ${API_PORT}): ${data.status} — ${data.tabCount} tabs`);
       } catch {

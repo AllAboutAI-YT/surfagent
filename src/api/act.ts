@@ -3,11 +3,10 @@ import { connectToTab, CDPClient } from '../chrome/connector.js';
 import { findTab, getAllTabs, TabInfo } from '../chrome/tabs.js';
 
 async function resolveTab(tabPattern: string, port: number, host: string): Promise<TabInfo> {
-  const tabs = await getAllTabs(port, host);
-  const index = parseInt(tabPattern, 10);
-  let tab = !isNaN(index) && index >= 0 && index < tabs.length ? tabs[index] : null;
+  let tab = await findTab(tabPattern, port, host);
   if (!tab) {
     const lower = tabPattern.toLowerCase();
+    const tabs = await getAllTabs(port, host);
     tab = tabs.find(t => t.url.toLowerCase().includes(lower) || t.title.toLowerCase().includes(lower)) || null;
   }
 

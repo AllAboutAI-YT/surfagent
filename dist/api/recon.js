@@ -1,6 +1,6 @@
 import CDP from 'chrome-remote-interface';
 import { connectToTab } from '../chrome/connector.js';
-import { getAllTabs } from '../chrome/tabs.js';
+import { findTab, getAllTabs } from '../chrome/tabs.js';
 const EXTRACTION_SCRIPT = `
 (function() {
   // ---- Helpers ----
@@ -346,11 +346,10 @@ export async function reconUrl(url, options) {
 export async function reconTab(tabPattern, options) {
     const port = options.port || 9222;
     const host = options.host || 'localhost';
-    const tabs = await getAllTabs(port, host);
-    const index = parseInt(tabPattern, 10);
-    let tab = !isNaN(index) && index >= 0 && index < tabs.length ? tabs[index] : null;
+    let tab = await findTab(tabPattern, port, host);
     if (!tab) {
         const lower = tabPattern.toLowerCase();
+        const tabs = await getAllTabs(port, host);
         tab = tabs.find(t => t.url.toLowerCase().includes(lower) || t.title.toLowerCase().includes(lower)) || null;
     }
     // Fall back to iframe targets if no page tab matched

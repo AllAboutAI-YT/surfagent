@@ -1,6 +1,6 @@
 import CDP from 'chrome-remote-interface';
 import { connectToTab, CDPClient } from '../chrome/connector.js';
-import { getAllTabs } from '../chrome/tabs.js';
+import { findTab, getAllTabs } from '../chrome/tabs.js';
 
 export interface ReconResult {
   url: string;
@@ -407,11 +407,10 @@ export async function reconTab(
   const port = options.port || 9222;
   const host = options.host || 'localhost';
 
-  const tabs = await getAllTabs(port, host);
-  const index = parseInt(tabPattern, 10);
-  let tab = !isNaN(index) && index >= 0 && index < tabs.length ? tabs[index] : null;
+  let tab = await findTab(tabPattern, port, host);
   if (!tab) {
     const lower = tabPattern.toLowerCase();
+    const tabs = await getAllTabs(port, host);
     tab = tabs.find(t => t.url.toLowerCase().includes(lower) || t.title.toLowerCase().includes(lower)) || null;
   }
 
