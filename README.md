@@ -132,8 +132,23 @@ Google Flights, YouTube, GitHub, Supabase, Hacker News, Reddit, CodePen, Polymar
 ## Requirements
 
 - macOS or Linux
-- Chrome (any recent version)
+- Chrome or any Chromium-based browser (Arc, Brave, Edge, Vivaldi, etc.)
 - Node.js 18+
+
+### Using a non-Chrome browser
+
+surfagent detects Chrome by default. For other Chromium-based browsers, set `BROWSER_PATH`:
+
+```bash
+# Arc
+BROWSER_PATH="/Applications/Arc.app/Contents/MacOS/Arc" surfagent start
+
+# Brave
+BROWSER_PATH="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" surfagent start
+
+# Microsoft Edge
+BROWSER_PATH="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" surfagent start
+```
 
 ## Contributing
 
