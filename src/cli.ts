@@ -115,8 +115,19 @@ async function waitForCDP(maxWait = 10000): Promise<boolean> {
   return false;
 }
 
+function getVersion(): string {
+  const pkgPath = path.join(__dirname, '..', 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+  return pkg.version;
+}
+
 async function main() {
   const command = process.argv[2];
+
+  if (command === '--version' || command === '-v' || command === 'version') {
+    console.log(getVersion());
+    return;
+  }
 
   if (command === 'help' || command === '--help' || command === '-h') {
     console.log(`
@@ -127,6 +138,7 @@ Usage:
   surfagent api       Start API only (Chrome must be running)
   surfagent chrome    Start Chrome debug session only
   surfagent health    Check if everything is running
+  surfagent version   Print version number
   surfagent help      Show this message
 
 Environment variables:
