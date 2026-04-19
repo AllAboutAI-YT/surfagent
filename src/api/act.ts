@@ -53,6 +53,10 @@ export async function fillFields(
   const client = await connectToTab(tab.id, port, host);
   const cdp = client as any;
 
+  // Bring tab to front so CDP Input.dispatchKeyEvent lands in the right target.
+  // Without this, key events on backgrounded tabs are dropped and el.value stays empty.
+  try { await (client.Page as any).bringToFront(); } catch {}
+
   // Enable Input domain for dispatching key events
   try { await cdp.Input?.enable?.(); } catch {}
 
@@ -96,39 +100,39 @@ export async function fillFields(
           })()`,
           returnByValue: true
         });
-      } else {
-        // Focus and clear
+      } else if (isContentEditable) {
+        // ContentEditable: use execCommand insertText inside the focused element
         await client.Runtime.evaluate({
-          expression: `
-            (function() {
-              const el = document.querySelector(${JSON.stringify(field.selector)});
-              el.focus();
-              el.click();
-              if (el.select) el.select();
-              else if (el.setSelectionRange) el.setSelectionRange(0, el.value?.length || 0);
-            })()
-          `,
+          expression: `(function() {
+            const el = document.querySelector(${JSON.stringify(field.selector)});
+            el.focus();
+            // Select all existing content and replace
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand('insertText', false, ${JSON.stringify(field.value)});
+          })()`,
           returnByValue: true
         });
-
-        // Clear existing value with select-all + delete
-        await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2 });
-        await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 2 });
-        await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Backspace', code: 'Backspace' });
-        await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Backspace', code: 'Backspace' });
-
-        // Type each character via CDP Input.dispatchKeyEvent
-        for (const char of field.value) {
-          if (char === '\n') {
-            await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-            await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-          } else if (char === '\t') {
-            await client.Runtime.evaluate({ expression: `document.execCommand('insertText', false, '\\t')` });
-          } else {
-            await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: char, text: char });
-            await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: char });
-          }
-        }
+      } else {
+        // Text/textarea inputs: use React-compatible native setter.
+        // This works regardless of OS-level window focus (unlike CDP Input.dispatchKeyEvent,
+        // which silently drops events when Chrome is not the active OS window).
+        // React tracks its own value via the native setter, so using it ensures onChange fires correctly.
+        await client.Runtime.evaluate({
+          expression: `(function() {
+            const el = document.querySelector(${JSON.stringify(field.selector)});
+            el.focus();
+            const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+            nativeSetter.call(el, ${JSON.stringify(field.value)});
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          })()`,
+          returnByValue: true
+        });
       }
 
       // Verify: use value for inputs, textContent for contenteditable
@@ -813,6 +817,9 @@ export async function typeKeys(
   const cdp = client as any;
 
   try {
+    // Bring tab to front so CDP Input.dispatchKeyEvent lands in the right target.
+    try { await (client.Page as any).bringToFront(); } catch {}
+
     // Type each character via CDP Input.dispatchKeyEvent
     for (const char of keys) {
       await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: char, text: char });
