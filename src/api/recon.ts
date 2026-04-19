@@ -74,16 +74,23 @@ const EXTRACTION_SCRIPT = `
     return rect.width > 0 && rect.height > 0;
   }
 
+  function cssAttr(v) {
+    // Escape backslashes and double-quotes so the value is safe inside [attr="..."].
+    // Without this, attribute values containing " (e.g. aria-label='Close "dialog"')
+    // produce syntactically invalid selectors that agents cannot use.
+    return '"' + String(v).replace(/\\\\/g, '\\\\\\\\').replace(/"/g, '\\\\"') + '"';
+  }
+
   function buildSelector(el) {
     if (el.id) return '#' + CSS.escape(el.id);
     const tag = el.tagName.toLowerCase();
-    if (el.getAttribute('aria-label')) return tag + '[aria-label="' + el.getAttribute('aria-label') + '"]';
-    if (el.getAttribute('data-testid')) return '[data-testid="' + el.getAttribute('data-testid') + '"]';
+    if (el.getAttribute('aria-label')) return tag + '[aria-label=' + cssAttr(el.getAttribute('aria-label')) + ']';
+    if (el.getAttribute('data-testid')) return '[data-testid=' + cssAttr(el.getAttribute('data-testid')) + ']';
     if (el.getAttribute('name')) {
-      const nameSelector = tag + '[name="' + el.getAttribute('name') + '"]';
+      const nameSelector = tag + '[name=' + cssAttr(el.getAttribute('name')) + ']';
       // Disambiguate radio/checkbox with same name by adding value
       if ((el.type === 'radio' || el.type === 'checkbox') && el.value) {
-        return nameSelector + '[value="' + el.value + '"]';
+        return nameSelector + '[value=' + cssAttr(el.value) + ']';
       }
       return nameSelector;
     }
