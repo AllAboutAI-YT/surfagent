@@ -2,6 +2,8 @@
 
 **Browser automation API for AI agents.** Give any AI agent the ability to see, navigate, and interact with real web pages through Chrome.
 
+[![Demo](https://img.youtube.com/vi/tkDIdH62yq8/maxresdefault.jpg)](https://www.youtube.com/watch?v=tkDIdH62yq8)
+
 `npm install -g surfagent` — two commands to give your agent a browser.
 
 [![npm version](https://img.shields.io/npm/v/surfagent.svg)](https://www.npmjs.com/package/surfagent)
