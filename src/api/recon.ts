@@ -334,8 +334,11 @@ export async function reconUrl(
   const host = options.host || 'localhost';
   const waitMs = options.waitMs || 2000;
 
-  // Open URL in a new tab
-  const target = await CDP.New({ port, host, url });
+  // Open URL in a new tab. Sanitize first: chrome-remote-interface forwards
+  // the URL into Chrome's debug HTTP path, where Node's http.request throws
+  // ERR_UNESCAPED_CHARACTERS for spaces etc. The library doesn't catch its
+  // own rejection, which crashes the API process.
+  const target = await CDP.New({ port, host, url: encodeURI(decodeURI(url)) });
   let client: CDPClient | null = null;
 
   try {
