@@ -404,7 +404,10 @@ export async function navigatePage(
         await client.close();
         throw new Error('Blocked: javascript: URLs are not allowed');
       }
-      await (client.Page as any).navigate({ url: request.url });
+      // Sanitize URL: Node's http.request (called by chrome-remote-interface
+      // for some Page methods) rejects unescaped chars like spaces with
+      // ERR_UNESCAPED_CHARACTERS. encodeURI(decodeURI(...)) is idempotent.
+      await (client.Page as any).navigate({ url: encodeURI(decodeURI(request.url)) });
       // Race loadEventFired against a timeout to prevent hanging on non-loading URLs
       const loadTimeout = new Promise<void>(resolve => setTimeout(resolve, Math.min(waitMs + 10000, 30000)));
       await Promise.race([(client.Page as any).loadEventFired(), loadTimeout]);
