@@ -158,6 +158,14 @@ export const STEALTH_PAYLOAD = `
 
   // @evasion: navigator.plugins -----------------------------------------------
   // Headless Chrome reports plugins.length === 0. Restore the canonical PDF entries.
+  //
+  // Critical: borrow the *real* PluginArray / Plugin / MimeTypeArray / MimeType
+  // prototypes from the live navigator.plugins / navigator.mimeTypes BEFORE we
+  // replace them. Sannysoft (and any detector that walks the prototype chain)
+  // checks navigator.plugins instanceof PluginArray — a hand-rolled stand-in
+  // with a fake prototype fails that test. By setPrototypeOf-ing the fake
+  // objects onto the real DOM prototypes we get instanceof for free without
+  // owning the (frozen) PluginArray constructor.
   try {
     const fakePlugins = [
       { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
@@ -171,43 +179,61 @@ export const STEALTH_PAYLOAD = `
       { type: 'text/pdf', suffixes: 'pdf', description: 'Portable Document Format' },
     ];
 
-    function PluginArray() {}
-    PluginArray.prototype = Object.create(Array.prototype);
-    PluginArray.prototype.item = function(i) { return this[i] || null; };
-    PluginArray.prototype.namedItem = function(name) {
-      for (const p of this) if (p.name === name) return p;
-      return null;
-    };
-    PluginArray.prototype.refresh = function() {};
+    // Capture real DOM prototypes BEFORE we replace navigator.plugins / mimeTypes.
+    // navigator.plugins exists (PluginArray) even when length === 0, but
+    // navigator.plugins[0] (Plugin) only exists if the page already has at least
+    // one entry. Same for MimeType.
+    const realPluginArrayProto = Object.getPrototypeOf(navigator.plugins);
+    const realPluginProto =
+      navigator.plugins.length > 0
+        ? Object.getPrototypeOf(navigator.plugins[0])
+        : null;
+    const realMimeTypeArrayProto = Object.getPrototypeOf(navigator.mimeTypes);
+    const realMimeTypeProto =
+      navigator.mimeTypes.length > 0
+        ? Object.getPrototypeOf(navigator.mimeTypes[0])
+        : null;
 
-    const pluginArray = Object.create(PluginArray.prototype);
+    const pluginArray = [];
     fakePlugins.forEach((p, i) => {
-      const plugin = Object.create({ name: p.name, filename: p.filename, description: p.description, length: 1 });
-      plugin.name = p.name; plugin.filename = p.filename; plugin.description = p.description; plugin.length = 1;
+      const plugin = { name: p.name, filename: p.filename, description: p.description, length: 1 };
+      if (realPluginProto) {
+        try { Object.setPrototypeOf(plugin, realPluginProto); } catch (_) {}
+      }
       pluginArray[i] = plugin;
       pluginArray[p.name] = plugin;
     });
     Object.defineProperty(pluginArray, 'length', { value: fakePlugins.length });
+    pluginArray.item = function(i) { return this[i] || null; };
+    pluginArray.namedItem = function(name) {
+      for (const p of this) if (p && p.name === name) return p;
+      return null;
+    };
+    pluginArray.refresh = function() {};
+    try { Object.setPrototypeOf(pluginArray, realPluginArrayProto); } catch (_) {}
 
     Object.defineProperty(Navigator.prototype, 'plugins', {
       configurable: true, enumerable: true,
       get: function() { return pluginArray; },
     });
 
-    function MimeTypeArray() {}
-    MimeTypeArray.prototype = Object.create(Array.prototype);
-    MimeTypeArray.prototype.item = function(i) { return this[i] || null; };
-    MimeTypeArray.prototype.namedItem = function(name) {
-      for (const m of this) if (m.type === name) return m;
-      return null;
-    };
-    const mimeTypeArray = Object.create(MimeTypeArray.prototype);
+    const mimeTypeArray = [];
     mimeTypes.forEach((m, i) => {
       const mt = { type: m.type, suffixes: m.suffixes, description: m.description, enabledPlugin: pluginArray[0] };
+      if (realMimeTypeProto) {
+        try { Object.setPrototypeOf(mt, realMimeTypeProto); } catch (_) {}
+      }
       mimeTypeArray[i] = mt;
       mimeTypeArray[m.type] = mt;
     });
     Object.defineProperty(mimeTypeArray, 'length', { value: mimeTypes.length });
+    mimeTypeArray.item = function(i) { return this[i] || null; };
+    mimeTypeArray.namedItem = function(name) {
+      for (const m of this) if (m && m.type === name) return m;
+      return null;
+    };
+    try { Object.setPrototypeOf(mimeTypeArray, realMimeTypeArrayProto); } catch (_) {}
+
     Object.defineProperty(Navigator.prototype, 'mimeTypes', {
       configurable: true, enumerable: true,
       get: function() { return mimeTypeArray; },
