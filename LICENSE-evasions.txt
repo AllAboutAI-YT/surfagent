@@ -1,0 +1,48 @@
+The stealth evasions vendored into src/stealth/payload.ts are adapted from the
+puppeteer-extra-plugin-stealth project. Attribution and original MIT license follow.
+
+Project: puppeteer-extra-plugin-stealth
+Repository: https://github.com/berstend/puppeteer-extra
+Author: berstend (and contributors)
+License: MIT
+
+================================================================================
+
+The MIT License (MIT)
+
+Copyright (c) 2018-present berstend
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+================================================================================
+
+Local notes
+-----------
+
+We do not depend on puppeteer-extra-plugin-stealth as an npm package because it
+peer-depends on puppeteer-extra → puppeteer (~60 MB), which is dead weight for a
+direct-CDP tool. The evasions in src/stealth/payload.ts are hand-adapted from
+the upstream evasions/* tree (navigator.webdriver, chrome.runtime, chrome.app,
+chrome.csi, chrome.loadTimes, navigator.plugins, navigator.languages,
+navigator.permissions.query, navigator.vendor, navigator.hardwareConcurrency,
+WebGL vendor/renderer, iframe.contentWindow, media.codecs, window outer
+dimensions). Each evasion in payload.ts carries a `// @evasion: <name>` header
+so future Chrome-version drift is debuggable.
+
+Maintenance: when a real block incident points at a stale evasion, refresh
+against the upstream tree at the commit pinned above.

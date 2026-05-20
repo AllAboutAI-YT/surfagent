@@ -1,5 +1,6 @@
 import { connectToTab } from '../chrome/connector.js';
 import { findTab } from '../chrome/tabs.js';
+import { sleepJitter } from '../stealth/cadence.js';
 
 export async function typeCommand(
   pattern: string,
@@ -58,8 +59,9 @@ export async function typeCommand(
     await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Backspace', code: 'Backspace' });
     await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Backspace', code: 'Backspace' });
 
-    // Type each character via CDP
+    // Type each character via CDP with per-key human cadence jitter (default 30-120 ms).
     for (const char of text) {
+      await sleepJitter('SURFAGENT_TYPE_JITTER_MS', [30, 120]);
       await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: char, text: char });
       await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: char });
     }

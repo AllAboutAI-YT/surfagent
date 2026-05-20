@@ -1,4 +1,5 @@
 import CDP from 'chrome-remote-interface';
+import { injectStealth } from '../stealth/inject.js';
 
 export interface CDPClient {
   Page: CDP.Client['Page'];
@@ -39,6 +40,7 @@ export async function connectToTab(targetId: string, port: number = DEFAULT_PORT
   await client.Page.enable();
   await client.Runtime.enable();
   await client.DOM.enable();
+  await injectStealth(client);
   return client as CDPClient;
 }
 

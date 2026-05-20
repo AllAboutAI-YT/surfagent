@@ -24,6 +24,7 @@ export interface ClickRequest {
     selector?: string;
     text?: string;
     waitAfter?: number;
+    humanMouse?: boolean;
 }
 export declare function clickElement(request: ClickRequest, options: {
     port?: number;

@@ -152,10 +152,57 @@ BROWSER_PATH="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" surf
 BROWSER_PATH="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" surfagent start
 ```
 
+## Stealth & Cadence (fork)
+
+This fork (`Jeffdotchan/surfagent`, version `1.3.0-stealth.1+`) adds three layers on top of the
+upstream `AllAboutAI-YT/surfagent`:
+
+- **Stealth injection** (default on): on every new CDP target, surfagent injects a
+  `Page.addScriptToEvaluateOnNewDocument` payload that masks `navigator.webdriver`, populates
+  `chrome.runtime` / `chrome.app` / `chrome.csi` / `chrome.loadTimes`, restores
+  `navigator.plugins` / `mimeTypes`, sets `navigator.languages`, wraps `navigator.permissions.query`,
+  spoofs WebGL vendor/renderer, randomizes `hardwareConcurrency`, fixes `outerWidth/Height`, and
+  patches media codec reporting. Evasions are vendored — not depended-on — from
+  `puppeteer-extra-plugin-stealth` (MIT). See `LICENSE-evasions.txt`.
+- **Click-timing jitter** (default on): every CDP-driven click sleeps a uniform-random interval
+  before issuing. Default 80–400 ms (≈240 ms p50). Keystrokes get a tighter 30–120 ms range.
+- **Mouse trajectory** (opt-in): a Bezier-curve mousemove path with small overshoot+return
+  before the click. ~250 ms extra latency; enable per call via `--human-mouse` or
+  `humanMouse: true` in the API body, or globally via `SURFAGENT_MOUSE_TRAJECTORY=1`.
+
+### Env vars
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SURFAGENT_STEALTH` | `1` | Set to `0` to disable stealth injection. |
+| `SURFAGENT_CLICK_JITTER_MS` | `80,400` | `min,max` for click pre-pause. Set `0,0` to disable. |
+| `SURFAGENT_TYPE_JITTER_MS` | `30,120` | `min,max` for per-keystroke pause. |
+| `SURFAGENT_MOUSE_TRAJECTORY` | `0` | Set `1` to enable Bezier path on every click globally. |
+
+### Per-call opt-in
+
+CLI:
+
+```bash
+surfagent click 0 "Add to cart" --human-mouse
+```
+
+API:
+
+```bash
+curl -s http://localhost:3456/click -d '{"tab":"0","selector":".cta","humanMouse":true}'
+```
+
+### What this fork is NOT
+
+Not in scope: `Runtime.evaluate` / `Function.prototype.toString` meta-patching, per-profile UA
+randomization, cookie-jar warming, behavioral session replay. Each is its own future spec.
+
 ## Contributing
 
-Issues and PRs welcome at [github.com/AllAboutAI-YT/surfagent](https://github.com/AllAboutAI-YT/surfagent).
+This is a fork. Upstream is [github.com/AllAboutAI-YT/surfagent](https://github.com/AllAboutAI-YT/surfagent);
+fork-specific issues belong at [github.com/Jeffdotchan/surfagent](https://github.com/Jeffdotchan/surfagent).
 
 ## License
 
-MIT
+MIT (upstream + fork). Vendored evasion attribution in `LICENSE-evasions.txt`.
