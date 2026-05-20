@@ -1,5 +1,6 @@
 import { connectToTab } from '../chrome/connector.js';
 import { findTab } from '../chrome/tabs.js';
+import { sleepJitter, humanMouseTo } from '../stealth/cadence.js';
 export async function clickCommand(pattern, selector, options) {
     try {
         const tab = await findTab(pattern, options.port, options.host);
@@ -8,6 +9,35 @@ export async function clickCommand(pattern, selector, options) {
             process.exit(1);
         }
         const client = await connectToTab(tab.id, options.port, options.host);
+        // Cadence layer: human-like pause before clicks (configurable via SURFAGENT_CLICK_JITTER_MS).
+        await sleepJitter();
+        // Opt-in Bezier mouse trajectory before the click. Resolves target center if requested.
+        const wantTrajectory = options.humanMouse === true || process.env.SURFAGENT_MOUSE_TRAJECTORY === '1';
+        if (wantTrajectory) {
+            try {
+                const bbox = await client.Runtime.evaluate({
+                    expression: `
+            (function() {
+              const sel = ${JSON.stringify(selector)};
+              let el = null;
+              try { el = document.querySelector(sel); } catch (e) {}
+              if (!el) return null;
+              const r = el.getBoundingClientRect();
+              if (r.width === 0 || r.height === 0) return null;
+              return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            })()
+          `,
+                    returnByValue: true,
+                });
+                const pt = bbox.result?.value;
+                if (pt && typeof pt.x === 'number' && typeof pt.y === 'number') {
+                    await humanMouseTo(client, pt.x, pt.y);
+                }
+            }
+            catch {
+                // Trajectory is best-effort; never block the click.
+            }
+        }
         // Try to click the element
         const result = await client.Runtime.evaluate({
             expression: `

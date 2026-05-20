@@ -1,4 +1,5 @@
 import CDP from 'chrome-remote-interface';
+import { injectStealth } from '../stealth/inject.js';
 const DEFAULT_PORT = 9222;
 const DEFAULT_HOST = 'localhost';
 export async function listTargets(port = DEFAULT_PORT, host = DEFAULT_HOST) {
@@ -19,6 +20,7 @@ export async function connectToTab(targetId, port = DEFAULT_PORT, host = DEFAULT
     await client.Page.enable();
     await client.Runtime.enable();
     await client.DOM.enable();
+    await injectStealth(client);
     return client;
 }
 export async function connectToFirstTab(port = DEFAULT_PORT, host = DEFAULT_HOST) {

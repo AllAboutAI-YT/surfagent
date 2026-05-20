@@ -1,6 +1,7 @@
 import CDP from 'chrome-remote-interface';
 import { connectToTab } from '../chrome/connector.js';
 import { getAllTabs } from '../chrome/tabs.js';
+import { sleepJitter, humanMouseTo } from '../stealth/cadence.js';
 async function resolveTab(tabPattern, port, host) {
     const tabs = await getAllTabs(port, host);
     const index = parseInt(tabPattern, 10);
@@ -193,6 +194,44 @@ export async function clickElement(request, options) {
     const tab = await resolveTab(request.tab, port, host);
     const client = await connectToTab(tab.id, port, host);
     try {
+        // Cadence layer: pre-click jitter (default 80-400 ms).
+        await sleepJitter();
+        // Opt-in mouse trajectory before click.
+        const wantTrajectory = request.humanMouse === true || process.env.SURFAGENT_MOUSE_TRAJECTORY === '1';
+        if (wantTrajectory) {
+            try {
+                const bboxResult = await client.Runtime.evaluate({
+                    expression: `
+            (function() {
+              const selector = ${JSON.stringify(request.selector || null)};
+              const text = ${JSON.stringify(request.text || null)};
+              let el = null;
+              if (selector) { try { el = document.querySelector(selector); } catch (e) {} }
+              if (!el && text) {
+                const lower = text.toLowerCase();
+                const all = document.querySelectorAll('a, button, input[type="submit"], [role="button"]');
+                for (const c of all) {
+                  const t = (c.innerText || c.textContent || '').trim().toLowerCase();
+                  if (t.includes(lower)) { el = c; break; }
+                }
+              }
+              if (!el) return null;
+              const r = el.getBoundingClientRect();
+              if (r.width === 0 || r.height === 0) return null;
+              return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            })()
+          `,
+                    returnByValue: true,
+                });
+                const pt = bboxResult.result?.value;
+                if (pt && typeof pt.x === 'number' && typeof pt.y === 'number') {
+                    await humanMouseTo(client, pt.x, pt.y);
+                }
+            }
+            catch {
+                // Best-effort; never block the click.
+            }
+        }
         const result = await client.Runtime.evaluate({
             expression: `
         (function() {
@@ -709,8 +748,9 @@ export async function typeKeys(tabPattern, keys, options) {
     const client = await connectToTab(tab.id, port, host);
     const cdp = client;
     try {
-        // Type each character via CDP Input.dispatchKeyEvent
+        // Type each character via CDP Input.dispatchKeyEvent, with per-key cadence jitter.
         for (const char of keys) {
+            await sleepJitter('SURFAGENT_TYPE_JITTER_MS', [30, 120]);
             await cdp.Input.dispatchKeyEvent({ type: 'keyDown', key: char, text: char });
             await cdp.Input.dispatchKeyEvent({ type: 'keyUp', key: char });
         }

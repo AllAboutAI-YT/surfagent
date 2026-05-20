@@ -97,11 +97,13 @@ program
 program
     .command('click <tab> <selector>')
     .description('Click an element in a tab (by CSS selector or text content)')
-    .action(async (tab, selector) => {
+    .option('--human-mouse', 'Use Bezier-curve mouse trajectory before the click (slower, less detectable)')
+    .action(async (tab, selector, cmdOpts) => {
     const opts = program.opts();
     await clickCommand(tab, selector, {
         port: parseInt(opts.port, 10),
-        host: opts.host
+        host: opts.host,
+        humanMouse: cmdOpts.humanMouse
     });
 });
 // Type command

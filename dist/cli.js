@@ -132,13 +132,19 @@ Usage:
   surfagent help      Show this message
 
 Environment variables:
-  CDP_PORT            Chrome debug port (default: 9222)
-  API_PORT            API server port (default: 3456)
-  BROWSER_PATH          Path to any Chromium-based browser (Arc, Brave, Edge, etc.)
-  CHROME_USER_DATA_DIR  Chrome profile directory (default: /tmp/surfagent-chrome)
+  CDP_PORT                    Chrome debug port (default: 9222)
+  API_PORT                    API server port (default: 3456)
+  BROWSER_PATH                Path to any Chromium-based browser (Arc, Brave, Edge, etc.)
+  CHROME_USER_DATA_DIR        Chrome profile directory (default: /tmp/surfagent-chrome)
+
+Stealth / cadence (Jeffdotchan/surfagent fork):
+  SURFAGENT_STEALTH           Enable stealth injection (default: 1; set to 0 to disable)
+  SURFAGENT_CLICK_JITTER_MS   Click-timing jitter range, "min,max" (default: 80,400)
+  SURFAGENT_TYPE_JITTER_MS    Keystroke jitter range, "min,max" (default: 30,120)
+  SURFAGENT_MOUSE_TRAJECTORY  Default mouse-curve mode on every click (default: 0; opt in per-call via --human-mouse or humanMouse:true)
 
 After starting, your AI agent can call http://localhost:3456
-Full API docs: https://github.com/AllAboutAI-YT/surfagent#readme
+Full API docs: https://github.com/Jeffdotchan/surfagent#readme
 `);
         return;
     }
